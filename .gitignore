@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Data files (auto-created at runtime)
+config.json
+history.db
+
+# Frontend build
+frontend/dist/
+frontend/node_modules/
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user
