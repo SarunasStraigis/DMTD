@@ -57,6 +57,8 @@ async def get_config() -> AppConfig:
 @app.put("/api/config", response_model=AppConfig)
 async def put_config(cfg: AppConfig) -> AppConfig:
     save_config(cfg)
+    if capture.running:
+        capture.set_phase_zero_offset(cfg.phase_zero_offset_rad, cfg.phase_zero_offset_ps)
     return cfg
 
 
@@ -84,6 +86,8 @@ async def get_status() -> dict[str, Any]:
         "device_index": cfg.device_index,
         "beat_frequency": cfg.beat_frequency,
         "expansion_factor": cfg.expansion_factor,
+        "phase_zero_offset_rad": cfg.phase_zero_offset_rad,
+        "phase_zero_offset_ps": cfg.phase_zero_offset_ps,
     }
 
 
@@ -106,6 +110,56 @@ async def stop_capture() -> dict:
         raise HTTPException(status_code=409, detail="Not running")
     capture.stop()
     return {"status": "stopped"}
+
+
+# ---------------------------------------------------------------------------
+# Phase zero offset
+# ---------------------------------------------------------------------------
+
+@app.get("/api/phase/zero")
+async def get_phase_zero() -> dict[str, Any]:
+    cfg = load_config()
+    return {
+        "phase_zero_offset_rad": cfg.phase_zero_offset_rad,
+        "phase_zero_offset_ps": cfg.phase_zero_offset_ps,
+        "active": abs(cfg.phase_zero_offset_rad) > 0.0 or abs(cfg.phase_zero_offset_ps) > 0.0,
+    }
+
+
+@app.post("/api/phase/zero/set")
+async def set_phase_zero() -> dict[str, Any]:
+    if not capture.running:
+        raise HTTPException(status_code=409, detail="Capture must be running to set zero")
+    latest = capture.get_latest_raw_phase()
+    if latest is None:
+        raise HTTPException(status_code=409, detail="No live phase sample available yet")
+    latest_rad, latest_ps = latest
+    cfg = load_config()
+    cfg.phase_zero_offset_rad = -latest_rad
+    cfg.phase_zero_offset_ps = -latest_ps
+    save_config(cfg)
+    capture.set_phase_zero_offset(cfg.phase_zero_offset_rad, cfg.phase_zero_offset_ps)
+    return {
+        "status": "set",
+        "phase_zero_offset_rad": cfg.phase_zero_offset_rad,
+        "phase_zero_offset_ps": cfg.phase_zero_offset_ps,
+        "active": True,
+    }
+
+
+@app.post("/api/phase/zero/clear")
+async def clear_phase_zero() -> dict[str, Any]:
+    cfg = load_config()
+    cfg.phase_zero_offset_rad = 0.0
+    cfg.phase_zero_offset_ps = 0.0
+    save_config(cfg)
+    capture.set_phase_zero_offset(0.0, 0.0)
+    return {
+        "status": "cleared",
+        "phase_zero_offset_rad": 0.0,
+        "phase_zero_offset_ps": 0.0,
+        "active": False,
+    }
 
 
 # ---------------------------------------------------------------------------

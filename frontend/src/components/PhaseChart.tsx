@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
-import { createLiveSocket, type LivePoint } from "../api/client";
+import { api, createLiveSocket, type LivePoint, type PhaseZeroState } from "../api/client";
 
 const MAX_POINTS = 3600;
 const AXIS_COLOR = "#d1d5db";
@@ -51,6 +51,9 @@ export function PhaseChart() {
   const [connected, setConnected] = useState(false);
   const [latest, setLatest] = useState<LivePoint | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [phaseZero, setPhaseZero] = useState<PhaseZeroState | null>(null);
+  const [zeroPending, setZeroPending] = useState(false);
+  const [zeroError, setZeroError] = useState<string | null>(null);
 
   const reset = () => {
     const d = dataRef.current;
@@ -64,13 +67,13 @@ export function PhaseChart() {
     if (!containerRef.current) return;
 
     const opts: uPlot.Options = {
-      title: "Phase Difference",
+      title: "Beat-Note Phase Difference",
       width: containerRef.current.clientWidth || 900,
       height: 320,
       series: [
         {},
         {
-          label: "Phase diff (ps)",
+          label: "Phase diff (ps, no expansion scaling)",
           stroke: "#22d3ee",
           width: 1.5,
           scale: "ps",
@@ -97,7 +100,7 @@ export function PhaseChart() {
         },
         {
           scale: "ps",
-          label: "ps",
+          label: "ps (beat-note)",
           stroke: "#22d3ee",
           grid: { stroke: GRID_COLOR, width: 1 },
           ticks: { stroke: TICK_COLOR },
@@ -148,6 +151,10 @@ export function PhaseChart() {
   }, []);
 
   useEffect(() => {
+    api.phaseZero.get().then(setPhaseZero).catch(() => {
+      setZeroError("Unable to read phase zero state");
+    });
+
     function connect() {
       const ws = createLiveSocket(
         (point) => {
@@ -182,21 +189,53 @@ export function PhaseChart() {
     ? (latest.phase_a_deg - latest.phase_b_deg).toFixed(2)
     : null;
 
+  const setZero = async () => {
+    setZeroPending(true);
+    setZeroError(null);
+    try {
+      const state = await api.phaseZero.set();
+      setPhaseZero(state);
+    } catch (err) {
+      setZeroError(err instanceof Error ? err.message : "Failed to set zero");
+    } finally {
+      setZeroPending(false);
+    }
+  };
+
+  const clearZero = async () => {
+    setZeroPending(true);
+    setZeroError(null);
+    try {
+      const state = await api.phaseZero.clear();
+      setPhaseZero(state);
+    } catch (err) {
+      setZeroError(err instanceof Error ? err.message : "Failed to clear zero");
+    } finally {
+      setZeroPending(false);
+    }
+  };
+
   return (
     <div className="bg-gray-900 rounded-xl p-4 shadow-lg">
       <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
         <h2 className="text-cyan-400 font-semibold text-lg">
-          Phase Difference — Real Time
+          Beat-Note Phase Difference — Real Time
         </h2>
         <div className="flex items-center gap-3 text-sm flex-wrap">
           {latest && (
             <>
               <span className="text-gray-400">
-                Now: <span className="text-white font-mono">{fmtTime(latest.phase_diff_ps)}</span>
+                Now (beat-note): <span className="text-white font-mono">{fmtTime(latest.phase_diff_ps)}</span>
               </span>
               <span className="text-gray-400">
                 Beat diff:{" "}
                 <span className="text-yellow-300 font-mono">{diffDegLatest}°</span>
+              </span>
+              <span className="text-gray-400">
+                Zero offset:{" "}
+                <span className={`font-mono ${phaseZero?.active ? "text-emerald-300" : "text-gray-300"}`}>
+                  {fmtTime(phaseZero?.phase_zero_offset_ps ?? 0)}
+                </span>
               </span>
             </>
           )}
@@ -204,9 +243,26 @@ export function PhaseChart() {
             className="px-2.5 py-1 rounded bg-gray-700 hover:bg-gray-600 text-xs text-gray-300">
             Reset
           </button>
+          <button
+            onClick={setZero}
+            disabled={zeroPending || !connected}
+            className="px-2.5 py-1 rounded bg-cyan-700 hover:bg-cyan-600 text-xs text-white disabled:opacity-50"
+            title="Set current live phase as zero reference"
+          >
+            Set Zero
+          </button>
+          <button
+            onClick={clearZero}
+            disabled={zeroPending || !phaseZero?.active}
+            className="px-2.5 py-1 rounded bg-gray-700 hover:bg-gray-600 text-xs text-gray-200 disabled:opacity-50"
+            title="Clear persistent zero offset"
+          >
+            Clear Zero
+          </button>
           <span className={`w-2 h-2 rounded-full ${connected ? "bg-green-400" : "bg-red-500"}`} />
         </div>
       </div>
+      {zeroError && <div className="mb-2 text-xs text-red-400">{zeroError}</div>}
 
       {/* Statistics bar */}
       {stats && (
@@ -233,8 +289,8 @@ export function PhaseChart() {
 
       {/* Legend */}
       <div className="flex gap-5 mb-1 text-xs text-gray-500">
-        <span><span className="text-cyan-400">■</span> Physical phase diff (left, auto-scaled)</span>
-        <span><span className="text-yellow-400">■</span> Beat-note phase diff (right, °) — raw IQ, not divided by expansion factor</span>
+        <span><span className="text-cyan-400">■</span> Beat-note time/phase (left, ps; no expansion-factor division)</span>
+        <span><span className="text-yellow-400">■</span> Beat-note phase diff (right, °) — raw IQ</span>
       </div>
 
       <div ref={containerRef} className="w-full" />

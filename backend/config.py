@@ -20,6 +20,8 @@ _DEFAULTS = {
     "freq_estimator": "fft_peak",
     "ref_frequency": 90_000_000,
     "history_retention_days": 30,
+    "phase_zero_offset_rad": 0.0,
+    "phase_zero_offset_ps": 0.0,
 }
 
 
@@ -48,6 +50,14 @@ class AppConfig(BaseModel):
     )
     history_retention_days: int = Field(
         default=30, ge=1, description="How many days of phase history to keep in SQLite"
+    )
+    phase_zero_offset_rad: float = Field(
+        default=0.0,
+        description="Persistent differential phase zero offset in radians (beat-note domain)",
+    )
+    phase_zero_offset_ps: float = Field(
+        default=0.0,
+        description="Persistent differential phase zero offset in picoseconds (beat-note domain)",
     )
 
     @property

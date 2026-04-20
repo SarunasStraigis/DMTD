@@ -108,7 +108,7 @@ export function AllanChart({ tau0 }: { tau0: number }) {
     <div className="bg-gray-900 rounded-xl p-4 shadow-lg">
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <h2 className="text-violet-400 font-semibold text-lg">
-          Allan Deviation (OADEV)
+          Allan Deviation (OADEV, beat-note history)
         </h2>
         <div className="flex items-center gap-3 text-sm text-gray-400 flex-wrap">
           {resetTime && (

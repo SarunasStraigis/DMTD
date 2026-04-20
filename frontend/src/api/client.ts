@@ -6,6 +6,8 @@ export interface AppConfig {
   freq_estimator: "fft_peak" | "fixed";
   ref_frequency: number;
   history_retention_days: number;
+  phase_zero_offset_rad: number;
+  phase_zero_offset_ps: number;
 }
 
 /** Derived — not stored in config.json */
@@ -21,6 +23,8 @@ export interface StatusResponse {
   device_index: number | null;
   beat_frequency: number;
   expansion_factor: number; // computed by backend: ref_frequency / beat_frequency
+  phase_zero_offset_rad: number;
+  phase_zero_offset_ps: number;
 }
 
 export interface DeviceInfo {
@@ -52,6 +56,7 @@ export interface SigGenStatus extends SigGenConfig {
 
 export interface HistoryPoint {
   ts: string;
+  // Beat-note domain differential phase/time (no expansion-factor division).
   phase_rad: number;
   phase_ps: number;
   beat_freq: number;
@@ -59,6 +64,7 @@ export interface HistoryPoint {
 
 export interface LivePoint {
   t: string;
+  // Beat-note domain differential phase/time (no expansion-factor division).
   phase_diff_rad: number;
   phase_diff_ps: number;
   beat_freq: number;
@@ -68,6 +74,12 @@ export interface LivePoint {
   phase_b_deg: number;
   rms_a: number;
   rms_b: number;
+}
+
+export interface PhaseZeroState {
+  phase_zero_offset_rad: number;
+  phase_zero_offset_ps: number;
+  active: boolean;
 }
 
 const BASE = "/api";
@@ -102,6 +114,11 @@ export const api = {
   },
 
   getSnapshot: () => request<{ sample_rate: number; ch_a: number[]; ch_b: number[] }>("/snapshot"),
+  phaseZero: {
+    get: () => request<PhaseZeroState>("/phase/zero"),
+    set: () => request<PhaseZeroState & { status: string }>("/phase/zero/set", { method: "POST" }),
+    clear: () => request<PhaseZeroState & { status: string }>("/phase/zero/clear", { method: "POST" }),
+  },
 
   siggen: {
     getDevices: () => request<OutputDeviceInfo[]>("/siggen/devices"),

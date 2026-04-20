@@ -6,7 +6,7 @@ Processing pipeline per block:
   2. IQ demodulate each channel → atan2 → raw phase
   3. Unwrap each channel independently (accumulate across blocks)
   4. Differential subtraction A - B
-  5. Scale by expansion factor → physical phase in radians, then picoseconds
+  5. Convert differential phase to picoseconds (no expansion-factor division)
 """
 
 from __future__ import annotations
@@ -56,8 +56,8 @@ class DMTDProcessor:
         (phase_diff_rad, phase_diff_ps, beat_freq,
          phase_a_ps, phase_b_ps, phase_a_deg, phase_b_deg, rms_a, rms_b)
 
-            phase_diff_rad  – physical differential phase in radians
-            phase_diff_ps   – same in picoseconds
+            phase_diff_rad  – beat-note differential phase in radians
+            phase_diff_ps   – same in picoseconds, using DUT oscillator frequency
             beat_freq       – estimated beat-note frequency used this block
             phase_a_ps      – absolute unwrapped phase of ch A in picoseconds
             phase_b_ps      – absolute unwrapped phase of ch B in picoseconds
@@ -85,17 +85,17 @@ class DMTDProcessor:
         unwrapped_A = self._unwrap_step(raw_A, "_A")
         unwrapped_B = self._unwrap_step(raw_B, "_B")
 
-        # Physical differential phase
+        # Beat-note differential phase (no expansion-factor division).
         phase_diff_expanded = unwrapped_A - unwrapped_B
-        phase_diff_rad = phase_diff_expanded / self.expansion_factor
+        phase_diff_rad = phase_diff_expanded
 
         # Convert to picoseconds: τ = φ / (2π f_ref)
         ps_per_rad = 1e12 / (2.0 * math.pi * self.ref_frequency)
         phase_diff_ps = phase_diff_rad * ps_per_rad
 
-        # Per-channel absolute phase in picoseconds (physical domain, divided by expansion factor)
-        phase_a_ps = (unwrapped_A / self.expansion_factor) * ps_per_rad
-        phase_b_ps = (unwrapped_B / self.expansion_factor) * ps_per_rad
+        # Per-channel absolute phase in picoseconds (same domain as phase_diff_rad above).
+        phase_a_ps = unwrapped_A * ps_per_rad
+        phase_b_ps = unwrapped_B * ps_per_rad
 
         # Per-channel phase in degrees — raw beat-note IQ phase (NOT divided by expansion factor).
         # This is what the audio-band signal actually looks like: 180° on the signal generator

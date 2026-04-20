@@ -32,6 +32,10 @@ class AudioCapture:
         self._worker_task: asyncio.Task | None = None
         self.running = False
         self._sample_rate: int = 192000
+        self._phase_zero_offset_rad: float = 0.0
+        self._phase_zero_offset_ps: float = 0.0
+        self._latest_raw_phase_rad: float | None = None
+        self._latest_raw_phase_ps: float | None = None
         # Ring buffer for waveform snapshot — always holds latest SNAPSHOT_SAMPLES frames
         self._snapshot: np.ndarray = np.zeros((SNAPSHOT_SAMPLES, 2), dtype=np.float32)
         self._snapshot_lock = threading.Lock()
@@ -49,6 +53,7 @@ class AudioCapture:
             freq_estimator=cfg.freq_estimator,
         )
         self._processor.reset()
+        self.set_phase_zero_offset(cfg.phase_zero_offset_rad, cfg.phase_zero_offset_ps)
 
         self._stream = sd.InputStream(
             device=cfg.device_index,
@@ -75,12 +80,26 @@ class AudioCapture:
             self._worker_task.cancel()
             self._worker_task = None
         self._processor = None
+        self._latest_raw_phase_rad = None
+        self._latest_raw_phase_ps = None
         self.running = False
 
     def get_snapshot(self) -> tuple[np.ndarray, int]:
         """Return a copy of the latest waveform snapshot and the sample rate."""
         with self._snapshot_lock:
             return self._snapshot.copy(), self._sample_rate
+
+    def set_phase_zero_offset(self, offset_rad: float, offset_ps: float) -> None:
+        self._phase_zero_offset_rad = float(offset_rad)
+        self._phase_zero_offset_ps = float(offset_ps)
+
+    def get_phase_zero_offset(self) -> tuple[float, float]:
+        return self._phase_zero_offset_rad, self._phase_zero_offset_ps
+
+    def get_latest_raw_phase(self) -> tuple[float, float] | None:
+        if self._latest_raw_phase_rad is None or self._latest_raw_phase_ps is None:
+            return None
+        return self._latest_raw_phase_rad, self._latest_raw_phase_ps
 
     def _sd_callback(
         self,
@@ -117,13 +136,18 @@ class AudioCapture:
             try:
                 block_f64 = block.astype(np.float64)
                 (
-                    phase_rad, phase_ps, beat_freq,
+                    phase_rad_raw, phase_ps_raw, beat_freq,
                     phase_a_ps, phase_b_ps,
                     phase_a_deg, phase_b_deg,
                     rms_a, rms_b,
                 ) = proc.process_block(block_f64)
             except Exception:
                 continue
+
+            self._latest_raw_phase_rad = phase_rad_raw
+            self._latest_raw_phase_ps = phase_ps_raw
+            phase_rad = phase_rad_raw + self._phase_zero_offset_rad
+            phase_ps = phase_ps_raw + self._phase_zero_offset_ps
 
             ts = datetime.now(timezone.utc).isoformat()
             enqueue_row(ts, phase_rad, phase_ps, beat_freq)

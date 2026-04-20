@@ -13,7 +13,7 @@ import webbrowser
 import uvicorn
 import webview
 
-PORT = 8000
+PORT = 8123
 URL = f"http://localhost:{PORT}"
 
 
