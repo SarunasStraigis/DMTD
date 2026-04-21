@@ -9,6 +9,7 @@ export interface AppConfig {
   iq_lpf_cutoff_hz: number;
   iq_lpf_order: number;
   iq_min_mag: number;
+  iq_window: "none" | "hann";
   pll_kp: number;
   pll_ki: number;
   pll_min_mag: number;

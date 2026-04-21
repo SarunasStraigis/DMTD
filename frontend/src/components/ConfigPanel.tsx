@@ -228,6 +228,23 @@ export function ConfigPanel() {
           </select>
         </Field>
 
+        {/* IQ integration window — affects all demod modes */}
+        <Field
+          label="IQ Integration Window"
+          hint="Hann suppresses 2·f_beat leakage when the block is not an exact integer of cycles. Integer-cycle truncation is always applied."
+        >
+          <select
+            className={inputClass}
+            value={cfg.iq_window}
+            onChange={(e) =>
+              update("iq_window", e.target.value as AppConfig["iq_window"])
+            }
+          >
+            <option value="hann">Hann (recommended)</option>
+            <option value="none">None (rectangular)</option>
+          </select>
+        </Field>
+
         {cfg.demod_mode === "block_iq_fir" && (
           <>
             <Field

@@ -3,10 +3,13 @@ DSP engine: IQ demodulation, phase unwrapping, DMTD differential measurement.
 
 Processing pipeline per block:
   1. Estimate beat frequency (FFT peak or fixed)
-  2. Demodulate each channel (block IQ or PLL tracker) → phase
-  3. For block IQ mode, unwrap each channel independently (accumulate across blocks)
+  2. Demodulate each channel (block IQ / filtered block IQ / PLL tracker) → phase
+  3. For block-IQ modes, unwrap each channel independently (accumulate across blocks)
   4. Differential subtraction A - B
   5. Convert differential phase to picoseconds (no expansion-factor division)
+
+Integer-cycle integration + optional Hann windowing is applied to the IQ DC
+mean in all three modes to suppress 2 f_beat leakage (cycle-leakage ripple).
 """
 
 from __future__ import annotations
@@ -14,7 +17,7 @@ from __future__ import annotations
 import math
 import numpy as np
 from numpy.typing import NDArray
-from scipy.signal import butter, sosfilt, sosfilt_zi
+from scipy.signal import butter, sosfiltfilt
 
 
 class DMTDProcessor:
@@ -30,6 +33,7 @@ class DMTDProcessor:
         iq_lpf_cutoff_hz: float = 120.0,
         iq_lpf_order: int = 4,
         iq_min_mag: float = 1e-4,
+        iq_window: str = "hann",
         pll_kp: float = 0.3,
         pll_ki: float = 0.03,
         pll_min_mag: float = 1e-4,
@@ -44,6 +48,7 @@ class DMTDProcessor:
         self.iq_lpf_cutoff_hz = iq_lpf_cutoff_hz
         self.iq_lpf_order = iq_lpf_order
         self.iq_min_mag = iq_min_mag
+        self.iq_window = iq_window
         self.pll_kp = pll_kp
         self.pll_ki = pll_ki
         self.pll_min_mag = pll_min_mag
@@ -59,10 +64,6 @@ class DMTDProcessor:
         self._pll_freq_hz: float | None = None
         self._iq_lpf_cache_key: tuple[int, float, int] | None = None
         self._iq_lpf_sos: NDArray[np.float64] | None = None
-        self._iq_lpf_zi_ia: NDArray[np.float64] | None = None
-        self._iq_lpf_zi_qa: NDArray[np.float64] | None = None
-        self._iq_lpf_zi_ib: NDArray[np.float64] | None = None
-        self._iq_lpf_zi_qb: NDArray[np.float64] | None = None
 
     def reset(self) -> None:
         self._prev_raw_A = None
@@ -73,10 +74,6 @@ class DMTDProcessor:
         self._pll_phase_A = None
         self._pll_phase_B = None
         self._pll_freq_hz = None
-        self._iq_lpf_zi_ia = None
-        self._iq_lpf_zi_qa = None
-        self._iq_lpf_zi_ib = None
-        self._iq_lpf_zi_qb = None
 
     def process_block(
         self, block: NDArray[np.float64]
@@ -112,18 +109,7 @@ class DMTDProcessor:
         elif self.demod_mode == "block_iq_fir":
             unwrapped_A, unwrapped_B = self._block_iq_fir_demodulate(ch_a, ch_b, n, beat_freq)
         else:
-            # Build I/Q reference vectors
-            t = np.arange(n, dtype=np.float64) / self.sample_rate
-            phase_ref = 2.0 * math.pi * beat_freq * t
-            cos_ref = np.cos(phase_ref)
-            sin_ref = np.sin(phase_ref)
-
-            raw_A = self._iq_phase(ch_a, cos_ref, sin_ref)
-            raw_B = self._iq_phase(ch_b, cos_ref, sin_ref)
-
-            # Unwrap across block boundaries
-            unwrapped_A = self._unwrap_step(raw_A, "_A")
-            unwrapped_B = self._unwrap_step(raw_B, "_B")
+            unwrapped_A, unwrapped_B = self._block_iq_demodulate(ch_a, ch_b, n, beat_freq)
 
         # Beat-note differential phase (no expansion-factor division).
         phase_diff_expanded = unwrapped_A - unwrapped_B
@@ -161,8 +147,29 @@ class DMTDProcessor:
         )
 
     # ------------------------------------------------------------------
-    # Internal helpers
+    # Demodulation modes
     # ------------------------------------------------------------------
+
+    def _block_iq_demodulate(
+        self,
+        ch_a: NDArray[np.float64],
+        ch_b: NDArray[np.float64],
+        n: int,
+        beat_freq: float,
+    ) -> tuple[float, float]:
+        """Legacy block-IQ with integer-cycle + windowed mean."""
+        t = np.arange(n, dtype=np.float64) / self.sample_rate
+        phase_ref = 2.0 * math.pi * beat_freq * t
+        cos_ref = np.cos(phase_ref)
+        sin_ref = np.sin(phase_ref)
+
+        n_eff = self._integer_cycle_n(n, beat_freq)
+        i_dc_a, q_dc_a = self._windowed_iq_mean(ch_a * cos_ref, ch_a * sin_ref, n_eff)
+        i_dc_b, q_dc_b = self._windowed_iq_mean(ch_b * cos_ref, ch_b * sin_ref, n_eff)
+
+        raw_A = math.atan2(q_dc_a, i_dc_a)
+        raw_B = math.atan2(q_dc_b, i_dc_b)
+        return self._unwrap_step(raw_A, "_A"), self._unwrap_step(raw_B, "_B")
 
     def _block_iq_fir_demodulate(
         self,
@@ -171,59 +178,53 @@ class DMTDProcessor:
         n: int,
         beat_freq: float,
     ) -> tuple[float, float]:
+        """
+        Stateless filtered-IQ demod.
+
+        For each block, independently:
+            mix → zero-phase LPF (sosfiltfilt) → edge-trim → integer-cycle
+            windowed mean → atan2.
+
+        No filter state is carried across blocks. sosfiltfilt is zero-phase so
+        the transient is symmetric at both ends, which we discard with a 10%
+        edge-trim. The windowed integer-cycle mean on the trimmed region kills
+        residual 2f ripple that leaked through the LPF.
+        """
         t = np.arange(n, dtype=np.float64) / self.sample_rate
         phase_ref = 2.0 * math.pi * beat_freq * t
         cos_ref = np.cos(phase_ref)
         sin_ref = np.sin(phase_ref)
 
-        i_a = self._lowpass_iq_stream(ch_a * cos_ref, "ia")
-        q_a = self._lowpass_iq_stream(ch_a * sin_ref, "qa")
-        i_b = self._lowpass_iq_stream(ch_b * cos_ref, "ib")
-        q_b = self._lowpass_iq_stream(ch_b * sin_ref, "qb")
+        sos = self._get_lpf_sos()
 
-        # Use the settled tail to reduce startup transient bias.
-        tail = max(32, int(0.2 * n))
-        i_dc_a = float(np.mean(i_a[-tail:]))
-        q_dc_a = float(np.mean(q_a[-tail:]))
-        i_dc_b = float(np.mean(i_b[-tail:]))
-        q_dc_b = float(np.mean(q_b[-tail:]))
+        # Filter zero-phase (stateless per block).
+        try:
+            i_a = sosfiltfilt(sos, ch_a * cos_ref)
+            q_a = sosfiltfilt(sos, ch_a * sin_ref)
+            i_b = sosfiltfilt(sos, ch_b * cos_ref)
+            q_b = sosfiltfilt(sos, ch_b * sin_ref)
+        except ValueError:
+            # Block too short for the chosen order; fall back to raw mix.
+            i_a, q_a = ch_a * cos_ref, ch_a * sin_ref
+            i_b, q_b = ch_b * cos_ref, ch_b * sin_ref
+
+        # Edge-trim (symmetric) to remove filter start/end transients.
+        trim = max(16, int(0.10 * n))
+        if 2 * trim >= n:
+            trim = 0
+        i_a_t = i_a[trim:n - trim] if trim else i_a
+        q_a_t = q_a[trim:n - trim] if trim else q_a
+        i_b_t = i_b[trim:n - trim] if trim else i_b
+        q_b_t = q_b[trim:n - trim] if trim else q_b
+        n_trim = len(i_a_t)
+
+        n_eff = self._integer_cycle_n(n_trim, beat_freq)
+        i_dc_a, q_dc_a = self._windowed_iq_mean(i_a_t, q_a_t, n_eff)
+        i_dc_b, q_dc_b = self._windowed_iq_mean(i_b_t, q_b_t, n_eff)
 
         raw_a = self._iq_phase_with_mag_gate(i_dc_a, q_dc_a, "_A", self.iq_min_mag)
         raw_b = self._iq_phase_with_mag_gate(i_dc_b, q_dc_b, "_B", self.iq_min_mag)
         return self._unwrap_step(raw_a, "_A"), self._unwrap_step(raw_b, "_B")
-
-    def _lowpass_iq_stream(self, x: NDArray[np.float64], stream: str) -> NDArray[np.float64]:
-        key = (self.sample_rate, self.iq_lpf_cutoff_hz, self.iq_lpf_order)
-        if self._iq_lpf_sos is None or self._iq_lpf_cache_key != key:
-            nyquist = 0.5 * self.sample_rate
-            norm_cutoff = min(0.99, self.iq_lpf_cutoff_hz / nyquist)
-            self._iq_lpf_sos = butter(self.iq_lpf_order, norm_cutoff, btype="low", output="sos")
-            self._iq_lpf_cache_key = key
-
-            # Reset stream filter memories when the filter design changes.
-            self._iq_lpf_zi_ia = None
-            self._iq_lpf_zi_qa = None
-            self._iq_lpf_zi_ib = None
-            self._iq_lpf_zi_qb = None
-
-        zi_attr = f"_iq_lpf_zi_{stream}"
-        zi = getattr(self, zi_attr)
-        if zi is None:
-            zi = sosfilt_zi(self._iq_lpf_sos) * float(x[0] if len(x) else 0.0)
-
-        y, zf = sosfilt(self._iq_lpf_sos, x, zi=zi)
-        setattr(self, zi_attr, zf)
-        return y
-
-    def _iq_phase_with_mag_gate(
-        self, i_dc: float, q_dc: float, suffix: str, min_mag: float
-    ) -> float:
-        mag = math.hypot(i_dc, q_dc)
-        if mag < min_mag:
-            prev = getattr(self, f"_prev_raw{suffix}")
-            if prev is not None:
-                return float(prev)
-        return math.atan2(q_dc, i_dc)
 
     def _pll_demodulate(
         self,
@@ -288,11 +289,82 @@ class DMTDProcessor:
         cos_ref = np.cos(nco_phase)
         sin_ref = np.sin(nco_phase)
 
-        i_dc = float(np.mean(ch * cos_ref))
-        q_dc = float(np.mean(ch * sin_ref))
+        # Integer-cycle + windowed DC — same leakage-suppression as block modes.
+        n_eff = self._integer_cycle_n(n, shared_freq_hz)
+        i_dc, q_dc = self._windowed_iq_mean(ch * cos_ref, ch * sin_ref, n_eff)
+
         block_dt = n / float(self.sample_rate)
         phase_propagated = phase_state + (2.0 * math.pi * shared_freq_hz * block_dt)
         return phase_propagated, i_dc, q_dc
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _integer_cycle_n(self, n: int, beat_freq: float) -> int:
+        """
+        Largest sample count ≤ n that covers an integer number of beat cycles.
+
+        At fs=192 kHz and f_beat=3 kHz one cycle is 64 samples exactly, so the
+        result is the largest multiple of 64 ≤ n. If beat_freq does not divide
+        the sample rate cleanly, the result is rounded to the nearest integer
+        samples; this is still far better than no truncation.
+
+        If the block is shorter than one cycle or beat_freq is invalid, return
+        the full block (fall back to rectangular mean of whatever we have).
+        """
+        if beat_freq <= 0 or n <= 1 or self.sample_rate <= 0:
+            return n
+        samples_per_cycle = self.sample_rate / beat_freq
+        if samples_per_cycle <= 0:
+            return n
+        cycles = int(math.floor(n / samples_per_cycle))
+        if cycles < 1:
+            return n
+        n_int = int(round(cycles * samples_per_cycle))
+        return min(max(n_int, 1), n)
+
+    def _windowed_iq_mean(
+        self,
+        i_arr: NDArray[np.float64],
+        q_arr: NDArray[np.float64],
+        n_eff: int,
+    ) -> tuple[float, float]:
+        """Windowed DC of the first n_eff samples of a post-mix I/Q pair."""
+        if n_eff <= 0 or len(i_arr) == 0:
+            return 0.0, 0.0
+        i_slice = i_arr[:n_eff]
+        q_slice = q_arr[:n_eff]
+        if self.iq_window == "hann" and n_eff >= 4:
+            w = np.hanning(n_eff)
+            wsum = float(np.sum(w))
+            if wsum > 0.0:
+                return (
+                    float(np.sum(i_slice * w) / wsum),
+                    float(np.sum(q_slice * w) / wsum),
+                )
+        return float(np.mean(i_slice)), float(np.mean(q_slice))
+
+    def _get_lpf_sos(self) -> NDArray[np.float64]:
+        key = (self.sample_rate, self.iq_lpf_cutoff_hz, self.iq_lpf_order)
+        if self._iq_lpf_sos is None or self._iq_lpf_cache_key != key:
+            nyquist = 0.5 * self.sample_rate
+            norm_cutoff = min(0.99, max(1e-6, self.iq_lpf_cutoff_hz / nyquist))
+            self._iq_lpf_sos = butter(
+                self.iq_lpf_order, norm_cutoff, btype="low", output="sos"
+            )
+            self._iq_lpf_cache_key = key
+        return self._iq_lpf_sos
+
+    def _iq_phase_with_mag_gate(
+        self, i_dc: float, q_dc: float, suffix: str, min_mag: float
+    ) -> float:
+        mag = math.hypot(i_dc, q_dc)
+        if mag < min_mag:
+            prev = getattr(self, f"_prev_raw{suffix}")
+            if prev is not None:
+                return float(prev)
+        return math.atan2(q_dc, i_dc)
 
     def _estimate_frequency(
         self, ch_a: NDArray[np.float64], ch_b: NDArray[np.float64], n: int
@@ -345,16 +417,6 @@ class DMTDProcessor:
 
         self._last_estimated_freq = chosen
         return chosen
-
-    @staticmethod
-    def _iq_phase(
-        ch: NDArray[np.float64],
-        cos_ref: NDArray[np.float64],
-        sin_ref: NDArray[np.float64],
-    ) -> float:
-        i_dc = float(np.mean(ch * cos_ref))
-        q_dc = float(np.mean(ch * sin_ref))
-        return math.atan2(q_dc, i_dc)
 
     def _unwrap_step(self, raw: float, suffix: str) -> float:
         """Accumulate a cross-block unwrap offset using a simple ±π jump detector."""

@@ -57,6 +57,7 @@ class AudioCapture:
             iq_lpf_cutoff_hz=cfg.iq_lpf_cutoff_hz,
             iq_lpf_order=cfg.iq_lpf_order,
             iq_min_mag=cfg.iq_min_mag,
+            iq_window=cfg.iq_window,
             pll_kp=cfg.pll_kp,
             pll_ki=cfg.pll_ki,
             pll_min_mag=cfg.pll_min_mag,

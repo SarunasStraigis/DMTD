@@ -23,6 +23,7 @@ _DEFAULTS = {
     "iq_lpf_cutoff_hz": 120.0,
     "iq_lpf_order": 4,
     "iq_min_mag": 1e-4,
+    "iq_window": "hann",
     "pll_kp": 0.3,
     "pll_ki": 0.03,
     "pll_min_mag": 1e-4,
@@ -76,6 +77,11 @@ class AppConfig(BaseModel):
         default=1e-4,
         ge=0.0,
         description="Minimum filtered I/Q magnitude required before phase update",
+    )
+    iq_window: Literal["none", "hann"] = Field(
+        default="hann",
+        description="Window applied to the IQ integration interval (all demod modes). "
+                    "Hann suppresses 2 f_beat leakage from non-integer-cycle integration.",
     )
     pll_kp: float = Field(
         default=0.3,
