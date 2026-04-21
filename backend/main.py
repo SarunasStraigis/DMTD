@@ -182,8 +182,10 @@ async def get_snapshot() -> dict[str, Any]:
     if not capture.running:
         raise HTTPException(status_code=409, detail="Capture not running")
     buf, sr = capture.get_snapshot()
+    beat_freq = capture.get_latest_beat_frequency()
     return {
         "sample_rate": sr,
+        "beat_frequency_hz": beat_freq,
         "ch_a": buf[:, 0].tolist(),
         "ch_b": buf[:, 1].tolist(),
     }

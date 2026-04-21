@@ -18,6 +18,14 @@ _DEFAULTS = {
     "block_size": 192000,
     "beat_frequency": 1000.0,
     "freq_estimator": "fft_peak",
+    "demod_mode": "block_iq",
+    "freq_source": "ch_a",
+    "iq_lpf_cutoff_hz": 120.0,
+    "iq_lpf_order": 4,
+    "iq_min_mag": 1e-4,
+    "pll_kp": 0.3,
+    "pll_ki": 0.03,
+    "pll_min_mag": 1e-4,
     "ref_frequency": 90_000_000,
     "history_retention_days": 30,
     "phase_zero_offset_rad": 0.0,
@@ -44,6 +52,47 @@ class AppConfig(BaseModel):
     freq_estimator: Literal["fft_peak", "fixed"] = Field(
         default="fft_peak",
         description="Method to estimate actual beat frequency each block",
+    )
+    demod_mode: Literal["block_iq", "block_iq_fir", "pll_tracker"] = Field(
+        default="block_iq",
+        description="Demodulation algorithm: legacy block IQ, filtered block IQ, or PLL tracker",
+    )
+    freq_source: Literal["ch_a", "avg_ab"] = Field(
+        default="ch_a",
+        description="Source for beat-frequency estimation in fft_peak mode",
+    )
+    iq_lpf_cutoff_hz: float = Field(
+        default=120.0,
+        gt=1.0,
+        description="Low-pass cutoff for filtered IQ demodulation mode",
+    )
+    iq_lpf_order: int = Field(
+        default=4,
+        ge=1,
+        le=12,
+        description="Butterworth low-pass order for filtered IQ demodulation mode",
+    )
+    iq_min_mag: float = Field(
+        default=1e-4,
+        ge=0.0,
+        description="Minimum filtered I/Q magnitude required before phase update",
+    )
+    pll_kp: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=5.0,
+        description="PLL proportional gain (phase correction per block)",
+    )
+    pll_ki: float = Field(
+        default=0.03,
+        ge=0.0,
+        le=5.0,
+        description="PLL integral gain (frequency correction per block)",
+    )
+    pll_min_mag: float = Field(
+        default=1e-4,
+        ge=0.0,
+        description="Minimum I/Q magnitude required before PLL updates are applied",
     )
     ref_frequency: float = Field(
         default=90_000_000, gt=0, description="Oscillator frequency in Hz (both DUTs)"

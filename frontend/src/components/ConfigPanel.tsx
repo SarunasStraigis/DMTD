@@ -2,6 +2,11 @@ import { useEffect, useState } from "react";
 import { api, computedExpansionFactor, type AppConfig, type DeviceInfo } from "../api/client";
 
 const SAMPLE_RATES = [44100, 48000, 96000, 192000] as const;
+const DEMOD_MODES = [
+  { value: "block_iq", label: "Block IQ (legacy atan2)" },
+  { value: "block_iq_fir", label: "Block IQ + LPF (noise-reduced)" },
+  { value: "pll_tracker", label: "PLL Tracker (amplitude-robust)" },
+] as const;
 
 function Field({
   label,
@@ -182,6 +187,142 @@ export function ConfigPanel() {
             <option value="fixed">Fixed (nominal)</option>
           </select>
         </Field>
+        {cfg.freq_estimator === "fft_peak" && (
+          <Field
+            label="Frequency Source"
+            hint="Source signal for FFT peak estimation"
+          >
+            <select
+              className={inputClass}
+              value={cfg.freq_source}
+              onChange={(e) =>
+                update("freq_source", e.target.value as AppConfig["freq_source"])
+              }
+            >
+              <option value="ch_a">Channel A only</option>
+              <option value="avg_ab">Average of A and B</option>
+            </select>
+          </Field>
+        )}
+
+        {/* Demodulation algorithm */}
+        <Field
+          label="Demodulation Mode"
+          hint="Select phase extraction method. PLL tracker is usually less sensitive to amplitude swings."
+        >
+          <select
+            className={inputClass}
+            value={cfg.demod_mode}
+            onChange={(e) =>
+              update(
+                "demod_mode",
+                e.target.value as AppConfig["demod_mode"]
+              )
+            }
+          >
+            {DEMOD_MODES.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        {cfg.demod_mode === "block_iq_fir" && (
+          <>
+            <Field
+              label="IQ LPF Cutoff (Hz)"
+              hint="Low-pass cutoff for post-mix I/Q filtering"
+            >
+              <input
+                type="number"
+                className={inputClass}
+                value={cfg.iq_lpf_cutoff_hz}
+                min={1}
+                max={5000}
+                step={1}
+                onChange={(e) => update("iq_lpf_cutoff_hz", Number(e.target.value))}
+              />
+            </Field>
+
+            <Field
+              label="IQ LPF Order"
+              hint="Butterworth filter order for I/Q low-pass"
+            >
+              <input
+                type="number"
+                className={inputClass}
+                value={cfg.iq_lpf_order}
+                min={1}
+                max={12}
+                step={1}
+                onChange={(e) => update("iq_lpf_order", Number(e.target.value))}
+              />
+            </Field>
+
+            <Field
+              label="IQ Min Magnitude"
+              hint="Below this value, filtered IQ update is held"
+            >
+              <input
+                type="number"
+                className={inputClass}
+                value={cfg.iq_min_mag}
+                min={0}
+                step={0.000001}
+                onChange={(e) => update("iq_min_mag", Number(e.target.value))}
+              />
+            </Field>
+          </>
+        )}
+
+        {cfg.demod_mode === "pll_tracker" && (
+          <>
+            <Field
+              label="PLL Kp"
+              hint="Proportional gain for phase correction each block"
+            >
+              <input
+                type="number"
+                className={inputClass}
+                value={cfg.pll_kp}
+                min={0}
+                max={5}
+                step={0.01}
+                onChange={(e) => update("pll_kp", Number(e.target.value))}
+              />
+            </Field>
+
+            <Field
+              label="PLL Ki"
+              hint="Integral gain for frequency correction each block"
+            >
+              <input
+                type="number"
+                className={inputClass}
+                value={cfg.pll_ki}
+                min={0}
+                max={5}
+                step={0.001}
+                onChange={(e) => update("pll_ki", Number(e.target.value))}
+              />
+            </Field>
+
+            <Field
+              label="PLL Min I/Q Magnitude"
+              hint="Below this value the PLL holds updates to avoid noise-driven jumps"
+            >
+              <input
+                type="number"
+                className={inputClass}
+                value={cfg.pll_min_mag}
+                min={0}
+                step={0.000001}
+                onChange={(e) => update("pll_min_mag", Number(e.target.value))}
+              />
+            </Field>
+          </>
+        )}
 
         {/* Reference oscillator frequency */}
         <Field

@@ -4,6 +4,14 @@ export interface AppConfig {
   block_size: number;
   beat_frequency: number;
   freq_estimator: "fft_peak" | "fixed";
+  demod_mode: "block_iq" | "block_iq_fir" | "pll_tracker";
+  freq_source: "ch_a" | "avg_ab";
+  iq_lpf_cutoff_hz: number;
+  iq_lpf_order: number;
+  iq_min_mag: number;
+  pll_kp: number;
+  pll_ki: number;
+  pll_min_mag: number;
   ref_frequency: number;
   history_retention_days: number;
   phase_zero_offset_rad: number;
@@ -113,7 +121,13 @@ export const api = {
     return request<HistoryPoint[]>(`/history?${params}`);
   },
 
-  getSnapshot: () => request<{ sample_rate: number; ch_a: number[]; ch_b: number[] }>("/snapshot"),
+  getSnapshot: () =>
+    request<{
+      sample_rate: number;
+      beat_frequency_hz: number | null;
+      ch_a: number[];
+      ch_b: number[];
+    }>("/snapshot"),
   phaseZero: {
     get: () => request<PhaseZeroState>("/phase/zero"),
     set: () => request<PhaseZeroState & { status: string }>("/phase/zero/set", { method: "POST" }),

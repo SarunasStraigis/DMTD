@@ -36,6 +36,7 @@ class AudioCapture:
         self._phase_zero_offset_ps: float = 0.0
         self._latest_raw_phase_rad: float | None = None
         self._latest_raw_phase_ps: float | None = None
+        self._latest_beat_frequency_hz: float | None = None
         # Ring buffer for waveform snapshot — always holds latest SNAPSHOT_SAMPLES frames
         self._snapshot: np.ndarray = np.zeros((SNAPSHOT_SAMPLES, 2), dtype=np.float32)
         self._snapshot_lock = threading.Lock()
@@ -51,6 +52,14 @@ class AudioCapture:
             expansion_factor=cfg.expansion_factor,   # computed: ref_frequency / beat_frequency
             ref_frequency=cfg.ref_frequency,
             freq_estimator=cfg.freq_estimator,
+            demod_mode=cfg.demod_mode,
+            freq_source=cfg.freq_source,
+            iq_lpf_cutoff_hz=cfg.iq_lpf_cutoff_hz,
+            iq_lpf_order=cfg.iq_lpf_order,
+            iq_min_mag=cfg.iq_min_mag,
+            pll_kp=cfg.pll_kp,
+            pll_ki=cfg.pll_ki,
+            pll_min_mag=cfg.pll_min_mag,
         )
         self._processor.reset()
         self.set_phase_zero_offset(cfg.phase_zero_offset_rad, cfg.phase_zero_offset_ps)
@@ -82,6 +91,7 @@ class AudioCapture:
         self._processor = None
         self._latest_raw_phase_rad = None
         self._latest_raw_phase_ps = None
+        self._latest_beat_frequency_hz = None
         self.running = False
 
     def get_snapshot(self) -> tuple[np.ndarray, int]:
@@ -100,6 +110,9 @@ class AudioCapture:
         if self._latest_raw_phase_rad is None or self._latest_raw_phase_ps is None:
             return None
         return self._latest_raw_phase_rad, self._latest_raw_phase_ps
+
+    def get_latest_beat_frequency(self) -> float | None:
+        return self._latest_beat_frequency_hz
 
     def _sd_callback(
         self,
@@ -146,6 +159,7 @@ class AudioCapture:
 
             self._latest_raw_phase_rad = phase_rad_raw
             self._latest_raw_phase_ps = phase_ps_raw
+            self._latest_beat_frequency_hz = beat_freq
             phase_rad = phase_rad_raw + self._phase_zero_offset_rad
             phase_ps = phase_ps_raw + self._phase_zero_offset_ps
 

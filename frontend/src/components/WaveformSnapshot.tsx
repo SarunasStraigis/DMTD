@@ -17,7 +17,7 @@ export function WaveformSnapshot() {
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [lastCapture, setLastCapture] = useState<string | null>(null);
-  const [info, setInfo] = useState<{ sr: number; n: number } | null>(null);
+  const [info, setInfo] = useState<{ sr: number; n: number; beatHz: number | null } | null>(null);
 
   // Build or rebuild uPlot whenever the container mounts
   useEffect(() => {
@@ -83,7 +83,7 @@ export function WaveformSnapshot() {
       const msPerSample = 1000 / snap.sample_rate;
       const t = Array.from({ length: n }, (_, i) => i * msPerSample);
       plotRef.current?.setData([t, snap.ch_a, snap.ch_b]);
-      setInfo({ sr: snap.sample_rate, n });
+      setInfo({ sr: snap.sample_rate, n, beatHz: snap.beat_frequency_hz });
       setLastCapture(new Date().toLocaleTimeString());
     } catch (e) {
       setError(String(e));
@@ -118,7 +118,8 @@ export function WaveformSnapshot() {
           {info && (
             <span className="text-gray-500 text-xs font-mono">
               {info.n} samples · {info.sr.toLocaleString()} Hz ·{" "}
-              {((info.n / info.sr) * 1000).toFixed(1)} ms
+              {((info.n / info.sr) * 1000).toFixed(1)} ms · beat{" "}
+              {info.beatHz == null ? "—" : `${info.beatHz.toFixed(3)} Hz`}
             </span>
           )}
           {lastCapture && (
