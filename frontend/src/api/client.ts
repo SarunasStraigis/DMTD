@@ -122,6 +122,15 @@ export const api = {
     return request<HistoryPoint[]>(`/history?${params}`);
   },
 
+  /**
+   * URL for the server-side CSV export of the phase time-series log.
+   * Pass through `window.open(...)` or an `<a download>` to trigger a download.
+   */
+  exportHistoryUrl: (since?: string) => {
+    const qs = since ? `?since=${encodeURIComponent(since)}` : "";
+    return `${BASE}/history/export${qs}`;
+  },
+
   getSnapshot: () =>
     request<{
       sample_rate: number;

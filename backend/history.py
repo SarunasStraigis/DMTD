@@ -80,6 +80,28 @@ def enqueue_row(ts: str, phase_rad: float, phase_ps: float, beat_freq: float) ->
         pass
 
 
+def _normalize_iso_ts(s: str) -> str:
+    """
+    Normalize an ISO-8601 timestamp to the canonical format we store in the DB:
+    ``YYYY-MM-DDTHH:MM:SS.ffffff+00:00``.
+
+    The DB is filtered with a plain ``WHERE ts >= ?`` string compare, so the
+    incoming ``since`` must be byte-for-byte comparable to stored rows. JS
+    ``Date#toISOString()`` produces 3-digit fractional seconds with a trailing
+    ``Z``, while Python's ``datetime.isoformat()`` produces 6-digit fractional
+    seconds with ``+00:00``; lex-ordering of those two forms is *not*
+    equivalent to chronological ordering, so we re-emit the input in the
+    stored form.
+    """
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return s
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat(timespec="microseconds")
+
+
 async def query_history(
     limit: int = 10000,
     since: str | None = None,
@@ -90,7 +112,7 @@ async def query_history(
     params: list = []
     if since:
         sql += " WHERE ts >= ?"
-        params.append(since)
+        params.append(_normalize_iso_ts(since))
     sql += " ORDER BY ts DESC LIMIT ?"
     params.append(limit)
     async with _db_conn.execute(sql, params) as cursor:

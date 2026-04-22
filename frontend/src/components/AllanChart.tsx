@@ -59,22 +59,25 @@ const formatAdev = (v: number) => {
   return `${(v * 1e9).toFixed(2)}ns`;
 };
 
-export function AllanChart({ tau0 }: { tau0: number }) {
+interface AllanChartProps {
+  tau0: number;
+  /** Shared session-start ISO timestamp. Controlled by the Live Phase tab's
+   *  Reset button; when set, history is trimmed to rows at/after this moment. */
+  sessionSince: string | null;
+}
+
+export function AllanChart({ tau0, sessionSince }: AllanChartProps) {
   const [allanData, setAllanData] = useState<AllanPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [lastFetch, setLastFetch] = useState<string>("");
-  const [sinceTs, setSinceTs] = useState<string | null>(null);
-  const [resetTime, setResetTime] = useState<string | null>(null);
-
-  const downloadCsv = () => {
-    const params = sinceTs ? `?since=${encodeURIComponent(sinceTs)}` : "";
-    window.open(`/api/history/export${params}`, "_blank");
-  };
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const history: HistoryPoint[] = await api.getHistory(10000, sinceTs ?? undefined);
+      const history: HistoryPoint[] = await api.getHistory(
+        10000,
+        sessionSince ?? undefined
+      );
       if (history.length < 3) {
         setAllanData([]);
         return;
@@ -89,14 +92,7 @@ export function AllanChart({ tau0 }: { tau0: number }) {
     } finally {
       setLoading(false);
     }
-  }, [tau0, sinceTs]);
-
-  const handleReset = () => {
-    const now = new Date().toISOString();
-    setSinceTs(now);
-    setResetTime(new Date().toLocaleTimeString());
-    setAllanData([]);
-  };
+  }, [tau0, sessionSince]);
 
   useEffect(() => {
     refresh();
@@ -108,34 +104,25 @@ export function AllanChart({ tau0 }: { tau0: number }) {
     <div className="bg-gray-900 rounded-xl p-4 shadow-lg">
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <h2 className="text-violet-400 font-semibold text-lg">
-          Allan Deviation (OADEV, beat-note history)
+          Allan Deviation (OADEV, DUT time error)
         </h2>
         <div className="flex items-center gap-3 text-sm text-gray-400 flex-wrap">
-          {resetTime && (
-            <span className="text-gray-600 text-xs">reset at {resetTime}</span>
+          {sessionSince && (
+            <span className="text-gray-500 text-xs">
+              since{" "}
+              <span className="font-mono text-gray-300">
+                {new Date(sessionSince).toLocaleTimeString()}
+              </span>
+            </span>
           )}
           {lastFetch && <span>Last: {lastFetch}</span>}
           <button
             onClick={refresh}
             disabled={loading}
             className="px-3 py-1 rounded bg-violet-700 hover:bg-violet-600 text-white text-xs disabled:opacity-50"
+            title="Force a recompute now (auto-refreshes every 60 s)"
           >
             {loading ? "Loading…" : "Refresh"}
-          </button>
-          <button
-            onClick={handleReset}
-            disabled={loading}
-            className="px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 text-white text-xs disabled:opacity-50"
-            title="Discard all history before now — does not delete data from disk"
-          >
-            Reset
-          </button>
-          <button
-            onClick={downloadCsv}
-            className="px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 text-white text-xs"
-            title="Download phase history as CSV"
-          >
-            Download CSV
           </button>
         </div>
       </div>

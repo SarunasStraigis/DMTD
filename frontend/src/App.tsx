@@ -7,12 +7,18 @@ import { SigGenPanel } from "./components/SigGenPanel";
 import { WaveformSnapshot } from "./components/WaveformSnapshot";
 import { api, type StatusResponse } from "./api/client";
 
-type Tab = "live" | "allan" | "channels" | "siggen" | "config";
+type Tab = "live" | "channels" | "siggen" | "config";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("live");
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [actionPending, setActionPending] = useState(false);
+  // Shared "session start" timestamp — a Reset on the Live tab bumps this and
+  // it becomes the `since` filter for both the Allan chart and all CSV downloads.
+  const [sessionSince, setSessionSince] = useState<string | null>(null);
+  const resetSession = useCallback(() => {
+    setSessionSince(new Date().toISOString());
+  }, []);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -105,7 +111,6 @@ export default function App() {
         {(
           [
             { id: "live",     label: "Live Phase" },
-            { id: "allan",    label: "Allan Deviation" },
             { id: "channels", label: "Channels" },
             { id: "siggen",   label: "Signal Gen" },
             { id: "config",   label: "Configuration" },
@@ -127,8 +132,10 @@ export default function App() {
 
       {/* Content — all panels stay mounted so WebSocket buffers persist across tab switches */}
       <main className="flex-1 px-6 py-5">
-        <div className={tab === "live"     ? "flex flex-col gap-5" : "hidden"}><PhaseChart /></div>
-        <div className={tab === "allan"    ? "flex flex-col gap-5" : "hidden"}><AllanChart tau0={blockDurationSec ?? 1} /></div>
+        <div className={tab === "live"     ? "flex flex-col gap-5" : "hidden"}>
+          <PhaseChart sessionSince={sessionSince} onSessionReset={resetSession} />
+          <AllanChart tau0={blockDurationSec ?? 1} sessionSince={sessionSince} />
+        </div>
         <div className={tab === "channels" ? "flex flex-col gap-5" : "hidden"}>
           <ChannelChart />
           <WaveformSnapshot />

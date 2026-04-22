@@ -164,7 +164,7 @@ class AudioCapture:
             phase_rad = phase_rad_raw + self._phase_zero_offset_rad
             phase_ps = phase_ps_raw + self._phase_zero_offset_ps
 
-            ts = datetime.now(timezone.utc).isoformat()
+            ts = datetime.now(timezone.utc).isoformat(timespec="microseconds")
             enqueue_row(ts, phase_rad, phase_ps, beat_freq)
 
             payload = {
