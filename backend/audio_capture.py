@@ -37,6 +37,12 @@ class AudioCapture:
         self._latest_raw_phase_rad: float | None = None
         self._latest_raw_phase_ps: float | None = None
         self._latest_beat_frequency_hz: float | None = None
+        # Slip detection on differential phase (raw, before zero offset).
+        self._prev_phase_diff_rad_raw: float | None = None
+        self._slip_count: int = 0
+        self._last_slip_k: int = 0
+        self._last_slip_step_rad: float = 0.0
+        self._last_slip_ts: str | None = None
         # Ring buffer for waveform snapshot — always holds latest SNAPSHOT_SAMPLES frames
         self._snapshot: np.ndarray = np.zeros((SNAPSHOT_SAMPLES, 2), dtype=np.float32)
         self._snapshot_lock = threading.Lock()
@@ -93,6 +99,11 @@ class AudioCapture:
         self._latest_raw_phase_rad = None
         self._latest_raw_phase_ps = None
         self._latest_beat_frequency_hz = None
+        self._prev_phase_diff_rad_raw = None
+        self._slip_count = 0
+        self._last_slip_k = 0
+        self._last_slip_step_rad = 0.0
+        self._last_slip_ts = None
         self.running = False
 
     def get_snapshot(self) -> tuple[np.ndarray, int]:
@@ -167,6 +178,26 @@ class AudioCapture:
             ts = datetime.now(timezone.utc).isoformat(timespec="microseconds")
             enqueue_row(ts, phase_rad, phase_ps, beat_freq)
 
+            # Detect ±2π slip steps in the *raw* differential phase stream.
+            slip_k = 0
+            slip_step_rad = 0.0
+            prev = self._prev_phase_diff_rad_raw
+            if prev is not None:
+                step = float(phase_rad_raw - prev)
+                two_pi = 2.0 * np.pi
+                k = int(round(step / two_pi))
+                if k != 0:
+                    residual = float(step - (k * two_pi))
+                    # Consider it a slip if it's very close to an integer 2π step.
+                    if abs(residual) < 0.35:
+                        slip_k = k
+                        slip_step_rad = step
+                        self._slip_count += 1
+                        self._last_slip_k = k
+                        self._last_slip_step_rad = step
+                        self._last_slip_ts = ts
+            self._prev_phase_diff_rad_raw = phase_rad_raw
+
             payload = {
                 "t": ts,
                 "phase_diff_rad": phase_rad,
@@ -178,6 +209,10 @@ class AudioCapture:
                 "phase_b_deg": phase_b_deg,
                 "rms_a": rms_a,
                 "rms_b": rms_b,
+                "slip_k": slip_k,
+                "slip_count": self._slip_count,
+                "slip_step_rad": slip_step_rad,
+                "last_slip_t": self._last_slip_ts,
             }
             await ws_manager.broadcast(payload)
 

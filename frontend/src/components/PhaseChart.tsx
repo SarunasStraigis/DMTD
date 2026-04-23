@@ -11,14 +11,27 @@ const AXIS_COLOR = "#d1d5db";
 const GRID_COLOR = "#374151";
 const TICK_COLOR = "#4b5563";
 
-interface Stats { mean: number; std: number; n: number }
+interface Stats { mean: number; std: number; n: number; min: number; max: number }
 
 function computeStats(arr: number[]): Stats | null {
-  if (arr.length === 0) return null;
   const n = arr.length;
-  const mean = arr.reduce((s, v) => s + v, 0) / n;
-  const variance = arr.reduce((s, v) => s + (v - mean) ** 2, 0) / n;
-  return { mean, std: Math.sqrt(variance), n };
+  if (n === 0) return null;
+  let sum = 0;
+  let min = arr[0];
+  let max = arr[0];
+  for (let i = 0; i < n; i++) {
+    const v = arr[i];
+    sum += v;
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  const mean = sum / n;
+  let sqSum = 0;
+  for (let i = 0; i < n; i++) {
+    const d = arr[i] - mean;
+    sqSum += d * d;
+  }
+  return { mean, std: Math.sqrt(sqSum / n), n, min, max };
 }
 
 /** Auto-scale a picosecond value to the most readable unit. */
@@ -71,6 +84,8 @@ export function PhaseChart({ sessionSince, onSessionReset }: PhaseChartProps) {
   const [maValue, setMaValue] = useState<number | null>(null);
   const [maWindow, setMaWindow] = useState<number>(DEFAULT_MA_WINDOW);
   const maWindowRef = useRef<number>(DEFAULT_MA_WINDOW);
+  const [slipCount, setSlipCount] = useState<number>(0);
+  const [lastSlip, setLastSlip] = useState<{ t: string; k: number; stepRad: number } | null>(null);
   const [phaseZero, setPhaseZero] = useState<PhaseZeroState | null>(null);
   const [zeroPending, setZeroPending] = useState(false);
   const [zeroError, setZeroError] = useState<string | null>(null);
@@ -99,6 +114,8 @@ export function PhaseChart({ sessionSince, onSessionReset }: PhaseChartProps) {
     setStats(null);
     setLatest(null);
     setMaValue(null);
+    setSlipCount(0);
+    setLastSlip(null);
     // Bump the shared session boundary so the Allan chart re-windows
     // and CSV downloads (from either chart) trim to now.
     onSessionReset();
@@ -239,6 +256,15 @@ export function PhaseChart({ sessionSince, onSessionReset }: PhaseChartProps) {
           plotRef.current?.setData([d.ts, d.ps, d.ps_ma, d.diff_deg]);
           setStats(computeStats(d.ps));
           setMaValue(maNow);
+
+          if (typeof point.slip_count === "number") setSlipCount(point.slip_count);
+          if (typeof point.slip_k === "number" && point.slip_k !== 0) {
+            setLastSlip({
+              t: point.t,
+              k: point.slip_k,
+              stepRad: typeof point.slip_step_rad === "number" ? point.slip_step_rad : 0,
+            });
+          }
         },
         () => {
           setConnected(false);
@@ -267,6 +293,10 @@ export function PhaseChart({ sessionSince, onSessionReset }: PhaseChartProps) {
 
   const diffDegLatest = latest
     ? (latest.phase_a_deg - latest.phase_b_deg).toFixed(2)
+    : null;
+
+  const slipLabel = lastSlip
+    ? `${lastSlip.k > 0 ? "+" : ""}${lastSlip.k}×2π`
     : null;
 
   const maEffectiveSpan = useMemo(() => {
@@ -366,8 +396,21 @@ export function PhaseChart({ sessionSince, onSessionReset }: PhaseChartProps) {
         </div>
       </div>
       {zeroError && <div className="mb-2 text-xs text-red-400">{zeroError}</div>}
+      {lastSlip && (
+        <div className="mb-3 rounded-lg border border-red-700/60 bg-red-950/40 px-3 py-2 text-sm flex flex-wrap items-center justify-between gap-2">
+          <div className="text-red-200">
+            <span className="font-semibold">Phase slip detected</span>{" "}
+            <span className="text-red-300 font-mono">{slipLabel}</span>
+          </div>
+          <div className="text-xs text-red-300 font-mono">
+            t={new Date(lastSlip.t).toLocaleTimeString()}{" "}
+            {lastSlip.stepRad ? `Δφ=${lastSlip.stepRad.toFixed(3)}rad` : ""}
+            {"  "}count={slipCount}
+          </div>
+        </div>
+      )}
 
-      {/* Primary indicators: latest Δt and moving-average Δt */}
+      {/* Primary indicators: latest Δt, moving-average Δt, buffer statistics */}
       <div className="flex flex-wrap gap-3 mb-3">
         <div className="flex-1 min-w-[200px] bg-gray-800/60 rounded-lg px-4 py-2 border border-gray-700">
           <div className="text-[10px] uppercase tracking-wider text-gray-500">
@@ -417,30 +460,45 @@ export function PhaseChart({ sessionSince, onSessionReset }: PhaseChartProps) {
             of {maWindow} samples
           </div>
         </div>
-      </div>
 
-      {/* Statistics bar */}
-      {stats && (
-        <div className="flex gap-6 mb-2 text-xs font-mono flex-wrap">
-          <span className="text-gray-500">n={stats.n.toLocaleString()}</span>
-          <span className="text-gray-400">
-            mean: <span className="text-cyan-300">{fmtTime(stats.mean)}</span>
-          </span>
-          <span className="text-gray-400">
-            σ: <span className="text-yellow-300">{fmtTime(stats.std)}</span>
-          </span>
-          <span className="text-gray-400">
-            min: <span className="text-gray-300">
-              {dataRef.current.ps.length ? fmtTime(Math.min(...dataRef.current.ps)) : "—"}
+        <div className="flex-1 min-w-[240px] bg-gray-800/60 rounded-lg px-4 py-2 border border-gray-700">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[10px] uppercase tracking-wider text-gray-500">
+              Statistics (Δt)
+            </div>
+            <span className="text-[10px] text-gray-500 font-mono">
+              n={stats ? stats.n.toLocaleString() : "—"}
             </span>
-          </span>
-          <span className="text-gray-400">
-            max: <span className="text-gray-300">
-              {dataRef.current.ps.length ? fmtTime(Math.max(...dataRef.current.ps)) : "—"}
+          </div>
+          <div className="text-2xl font-mono text-yellow-300 leading-tight">
+            σ&nbsp;{stats ? fmtTime(stats.std) : "—"}
+          </div>
+          <div className="grid grid-cols-3 gap-x-3 text-[11px] font-mono mt-0.5">
+            <span className="text-gray-500">
+              mean{" "}
+              <span className="text-cyan-300">
+                {stats ? fmtTime(stats.mean) : "—"}
+              </span>
             </span>
-          </span>
+            <span className="text-gray-500">
+              min{" "}
+              <span className="text-gray-300">
+                {stats ? fmtTime(stats.min) : "—"}
+              </span>
+            </span>
+            <span className="text-gray-500">
+              max{" "}
+              <span className="text-gray-300">
+                {stats ? fmtTime(stats.max) : "—"}
+              </span>
+            </span>
+          </div>
+          <div className="mt-1 text-[10px] text-gray-500 font-mono">
+            slips={slipCount || 0}
+            {lastSlip ? `  last=${slipLabel}` : ""}
+          </div>
         </div>
-      )}
+      </div>
 
       {/* Legend */}
       <div className="flex gap-5 mb-1 text-xs text-gray-500 flex-wrap">

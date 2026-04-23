@@ -167,8 +167,10 @@ class DMTDProcessor:
         i_dc_a, q_dc_a = self._windowed_iq_mean(ch_a * cos_ref, ch_a * sin_ref, n_eff)
         i_dc_b, q_dc_b = self._windowed_iq_mean(ch_b * cos_ref, ch_b * sin_ref, n_eff)
 
-        raw_A = math.atan2(q_dc_a, i_dc_a)
-        raw_B = math.atan2(q_dc_b, i_dc_b)
+        # Magnitude-gate the raw atan2 phase so a low-SNR / drop-out block
+        # doesn't inject a random ±π jump that later turns into a 2π slip.
+        raw_A = self._iq_phase_with_mag_gate(i_dc_a, q_dc_a, "_A", self.iq_min_mag)
+        raw_B = self._iq_phase_with_mag_gate(i_dc_b, q_dc_b, "_B", self.iq_min_mag)
         return self._unwrap_step(raw_A, "_A"), self._unwrap_step(raw_B, "_B")
 
     def _block_iq_fir_demodulate(

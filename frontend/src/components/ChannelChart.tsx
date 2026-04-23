@@ -72,6 +72,8 @@ export function ChannelChart() {
   }>({ ts: [], a_amp: [], b_amp: [], a_deg: [], b_deg: [] });
 
   const wsRef = useRef<WebSocket | null>(null);
+  const liveEnabledRef = useRef(false);
+  const [liveEnabled, setLiveEnabled] = useState(false);
   const [connected, setConnected] = useState(false);
   const [latest, setLatest] = useState<LivePoint | null>(null);
 
@@ -123,8 +125,27 @@ export function ChannelChart() {
     };
   }, [mode]);
 
-  // WebSocket connection — connect once, persist across mode changes
   useEffect(() => {
+    liveEnabledRef.current = liveEnabled;
+  }, [liveEnabled]);
+
+  // WebSocket only while live is enabled — avoids extra client load when the tab is idle
+  useEffect(() => {
+    if (!liveEnabled) {
+      wsRef.current?.close();
+      wsRef.current = null;
+      setConnected(false);
+      setLatest(null);
+      const d = dataRef.current;
+      d.ts = [];
+      d.a_amp = [];
+      d.b_amp = [];
+      d.a_deg = [];
+      d.b_deg = [];
+      plotRef.current?.setData([[], [], []]);
+      return;
+    }
+
     function connect() {
       const ws = createLiveSocket(
         (point) => {
@@ -143,7 +164,6 @@ export function ChannelChart() {
             d.a_deg.shift();
             d.b_deg.shift();
           }
-          // Update the plot with whichever series is currently active
           const yA =
             modeRef.current === "amplitude" ? d.a_amp : d.a_deg;
           const yB =
@@ -152,7 +172,9 @@ export function ChannelChart() {
         },
         () => {
           setConnected(false);
-          setTimeout(connect, 3000);
+          if (liveEnabledRef.current) {
+            setTimeout(connect, 3000);
+          }
         }
       );
       ws.onopen = () => setConnected(true);
@@ -161,8 +183,9 @@ export function ChannelChart() {
     connect();
     return () => {
       wsRef.current?.close();
+      wsRef.current = null;
     };
-  }, []);
+  }, [liveEnabled]);
 
   const chA = mode === "amplitude" ? latest?.rms_a : latest?.phase_a_deg;
   const chB = mode === "amplitude" ? latest?.rms_b : latest?.phase_b_deg;
@@ -176,8 +199,25 @@ export function ChannelChart() {
         <h2 className="text-white font-semibold text-lg">Channel Monitor</h2>
 
         <div className="flex items-center gap-3 text-sm flex-wrap">
-          {/* Live readouts */}
-          {latest && (
+          <button
+            type="button"
+            onClick={() => setLiveEnabled((v) => !v)}
+            className={`px-3 py-1 rounded text-xs font-semibold transition ${
+              liveEnabled
+                ? "bg-emerald-800 hover:bg-emerald-700 text-white"
+                : "bg-gray-700 hover:bg-gray-600 text-gray-200"
+            }`}
+            title={
+              liveEnabled
+                ? "Stop live WebSocket updates (reduces UI load)"
+                : "Start live channel amplitude / phase updates"
+            }
+          >
+            {liveEnabled ? "Live: on" : "Live: off"}
+          </button>
+
+          {/* Live readouts — only meaningful while live is enabled */}
+          {liveEnabled && latest && (
             <>
               <span style={{ color: COLORS.a }}>
                 A:{" "}
@@ -196,7 +236,8 @@ export function ChannelChart() {
 
           <button
             onClick={reset}
-            className="px-2.5 py-1 rounded bg-gray-700 hover:bg-gray-600 text-xs text-gray-300"
+            disabled={!liveEnabled}
+            className="px-2.5 py-1 rounded bg-gray-700 hover:bg-gray-600 text-xs text-gray-300 disabled:opacity-40 disabled:pointer-events-none"
           >
             Reset
           </button>
@@ -226,7 +267,20 @@ export function ChannelChart() {
           </div>
 
           <span
-            className={`w-2 h-2 rounded-full ${connected ? "bg-green-400" : "bg-red-500"}`}
+            className={`w-2 h-2 rounded-full ${
+              !liveEnabled
+                ? "bg-gray-600"
+                : connected
+                  ? "bg-green-400"
+                  : "bg-red-500"
+            }`}
+            title={
+              !liveEnabled
+                ? "Live updates disabled"
+                : connected
+                  ? "WebSocket connected"
+                  : "Connecting…"
+            }
           />
         </div>
       </div>
@@ -250,6 +304,12 @@ export function ChannelChart() {
         )}
       </div>
 
+      {!liveEnabled && (
+        <p className="text-xs text-gray-500 mb-2">
+          Live channel data is off. Click <span className="text-gray-400">Live: off</span> to
+          connect and stream amplitude / phase (reduces load when you do not need this view).
+        </p>
+      )}
       <div ref={containerRef} className="w-full" />
     </div>
   );

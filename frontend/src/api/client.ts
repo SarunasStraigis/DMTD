@@ -83,6 +83,14 @@ export interface LivePoint {
   phase_b_deg: number;
   rms_a: number;
   rms_b: number;
+  /** Slip detection: integer 2π step count for this block (0 if none). */
+  slip_k?: number;
+  /** Total slip events detected since backend start. */
+  slip_count?: number;
+  /** Raw radian step that triggered this slip (0 if none). */
+  slip_step_rad?: number;
+  /** Timestamp of most recent slip event (ISO), if any. */
+  last_slip_t?: string | null;
 }
 
 export interface PhaseZeroState {
