@@ -44,24 +44,33 @@ jobs:
       - name: Install Velopack CLI
         run: dotnet tool install -g vpk --version ${{ env.VELOPACK_VERSION }}
 
+      - name: Add vpk to PATH
+        run: echo "$env:USERPROFILE\.dotnet\tools" >> $env:GITHUB_PATH
+        shell: pwsh
+
       - name: Download previous release
         continue-on-error: true
-        run: vpk download github --repoUrl https://github.com/${{ github.repository }}
+        shell: pwsh
+        run: vpk download github --repoUrl "https://github.com/${{ github.repository }}" --token "${{ github.token }}"
 
       - name: Pack Velopack release
+        shell: pwsh
         run: |
           vpk pack `
             --packId ${{ env.PACK_ID }} `
             --packVersion ${{ steps.version.outputs.version }} `
             --packDir publish `
-            --mainExe PhaseLab.exe
+            --mainExe PhaseLab.exe `
+            --outputDir Releases
 
       - name: Upload GitHub release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
         run: |
           vpk upload github `
-            --repoUrl https://github.com/${{ github.repository }} `
+            --repoUrl "https://github.com/${{ github.repository }}" `
+            --outputDir Releases `
+            --token "${{ github.token }}" `
+            --merge `
             --publish `
             --releaseName "PhaseLab ${{ steps.version.outputs.version }}" `
-            --tag v${{ steps.version.outputs.version }}
+            --tag "v${{ steps.version.outputs.version }}"
