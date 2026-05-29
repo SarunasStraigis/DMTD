@@ -20,6 +20,11 @@ from numpy.typing import NDArray
 from scipy.signal import butter, sosfiltfilt
 
 
+def wrap_principal_rad(phi_rad: float) -> float:
+    """Fold beat-note phase to (-π, π]: one RF-cycle ambiguity in differential phase."""
+    return math.atan2(math.sin(phi_rad), math.cos(phi_rad))
+
+
 class DMTDProcessor:
     def __init__(
         self,

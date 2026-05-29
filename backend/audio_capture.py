@@ -7,6 +7,7 @@ that the DSP coroutine drains.
 from __future__ import annotations
 
 import asyncio
+import math
 import threading
 from datetime import datetime, timezone
 from typing import Any
@@ -15,7 +16,7 @@ import numpy as np
 import sounddevice as sd
 
 from .config import AppConfig
-from .dsp import DMTDProcessor
+from .dsp import DMTDProcessor, wrap_principal_rad
 from .history import enqueue_row
 from .ws_manager import manager as ws_manager
 
@@ -34,10 +35,11 @@ class AudioCapture:
         self._sample_rate: int = 192000
         self._phase_zero_offset_rad: float = 0.0
         self._phase_zero_offset_ps: float = 0.0
-        self._latest_raw_phase_rad: float | None = None
+        self._latest_raw_phase_rad: float | None = None  # DSP diff, unwrapped; not RF-folded
         self._latest_raw_phase_ps: float | None = None
         self._latest_beat_frequency_hz: float | None = None
-        # Slip detection on differential phase (raw, before zero offset).
+        # Slip detection runs on differential phase_raw (DSP-unwrapped stream;
+        # differs from streamed/logged RF-folded phase after wrap_principal_rad).
         self._prev_phase_diff_rad_raw: float | None = None
         self._slip_count: int = 0
         self._last_slip_k: int = 0
@@ -119,6 +121,10 @@ class AudioCapture:
         return self._phase_zero_offset_rad, self._phase_zero_offset_ps
 
     def get_latest_raw_phase(self) -> tuple[float, float] | None:
+        """Latest differential phase (rad) and picoseconds straight from DSP (unwrapped chain).
+
+        WebSocket payloads and SQLite use wrap_principal_rad on (raw + offset_rad)
+        and picoseconds derived from wrapped radians only."""
         if self._latest_raw_phase_rad is None or self._latest_raw_phase_ps is None:
             return None
         return self._latest_raw_phase_rad, self._latest_raw_phase_ps
@@ -172,8 +178,11 @@ class AudioCapture:
             self._latest_raw_phase_rad = phase_rad_raw
             self._latest_raw_phase_ps = phase_ps_raw
             self._latest_beat_frequency_hz = beat_freq
-            phase_rad = phase_rad_raw + self._phase_zero_offset_rad
-            phase_ps = phase_ps_raw + self._phase_zero_offset_ps
+            # Streamed / logged diff: fold to one RF cycle; rad and ps from same wrapped angle.
+            combined_rad = phase_rad_raw + self._phase_zero_offset_rad
+            phase_rad = wrap_principal_rad(combined_rad)
+            ps_per_rad = 1e12 / (2.0 * math.pi * cfg.ref_frequency)
+            phase_ps = phase_rad * ps_per_rad
 
             ts = datetime.now(timezone.utc).isoformat(timespec="microseconds")
             enqueue_row(ts, phase_rad, phase_ps, beat_freq)
