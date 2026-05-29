@@ -1,0 +1,25 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+
+    <SolidColorBrush x:Key="AppBackgroundBrush" Color="#FF1E1E1E"/>
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#FF2D2D2D"/>
+    <SolidColorBrush x:Key="SurfaceBorderBrush" Color="#FF3F3F3F"/>
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#FFE8E8E8"/>
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#FFAAAAAA"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="#FF3B82F6"/>
+    <SolidColorBrush x:Key="AccentForegroundBrush" Color="#FFFFFFFF"/>
+    <SolidColorBrush x:Key="AccentStopBrush" Color="#FFEF4444"/>
+    <SolidColorBrush x:Key="InputBackgroundBrush" Color="#FF252526"/>
+    <SolidColorBrush x:Key="InputBorderBrush" Color="#FF505050"/>
+    <SolidColorBrush x:Key="WarningBrush" Color="#FFF87171"/>
+
+    <sys:String x:Key="ChartFigureBackground">#2A2A2A</sys:String>
+    <sys:String x:Key="ChartDataBackground">#242424</sys:String>
+    <sys:String x:Key="ChartText">#E0E0E0</sys:String>
+    <sys:String x:Key="ChartGrid">#888888</sys:String>
+    <sys:String x:Key="ChartSignalColor">#64B5F6</sys:String>
+    <sys:String x:Key="ChartSecondaryColor">#CE93D8</sys:String>
+    <sys:String x:Key="ChartIntegrationLine">#64B5F6</sys:String>
+
+</ResourceDictionary>

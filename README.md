@@ -37,7 +37,35 @@ The software layer captures the continuous audio stream and extracts the phase d
 
 ---
 
-## Software Setup
+## PhaseLab (Native .NET Desktop App)
+
+**PhaseLab** is the unified Windows desktop application for DMTD phase analysis and jitter measurement. Use the toolbar to switch modes; the last selected mode is remembered in `%AppData%\PhaseLab\settings.json`.
+
+### Prerequisites
+- Windows 10/11 x64
+- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+
+### Run (development)
+
+```powershell
+dotnet run --project PhaseLab.Shell/PhaseLab.Shell.csproj
+```
+
+### Publish (single-file executable)
+
+```powershell
+./publish.ps1
+```
+
+Output: `dist/PhaseLab.exe`
+
+### Legacy Python/React stack
+
+The `python desktop.py` launcher and `backend/` + `frontend/` stack remain in the repo for reference but are **deprecated** in favor of PhaseLab.
+
+---
+
+## Software Setup (Legacy Python/React)
 
 ### Prerequisites
 - Python 3.11+
@@ -60,14 +88,14 @@ npm run build          # build for production (served by FastAPI)
 npm run dev            # dev server with hot reload at http://localhost:5173
 ```
 
-### Run (Desktop App)
+### Run (Desktop App — deprecated)
 
 ```bash
 # From the repo root:
 python desktop.py
 ```
 
-Starts the FastAPI server on `http://localhost:8000` and opens a native desktop window.
+Starts the FastAPI server on `http://localhost:8123` and opens a native desktop window. Prefer **PhaseLab** above.
 
 ### Run (Server / Headless)
 

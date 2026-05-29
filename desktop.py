@@ -1,6 +1,8 @@
 """
+DEPRECATED: Use PhaseLab (dotnet run --project PhaseLab.Shell) instead.
+
 Desktop launcher: starts the FastAPI backend in a background thread,
-then opens a pywebview window pointing at localhost:8000.
+then opens a pywebview window pointing at localhost:8123.
 
 Usage:
     python desktop.py

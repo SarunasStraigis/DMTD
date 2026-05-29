@@ -1,0 +1,223 @@
+{
+  "cases": [
+    {
+      "name": "block_iq_three_blocks",
+      "settings": {
+        "sample_rate": 48000,
+        "block_size": 4800,
+        "beat_frequency": 1000.0,
+        "ref_frequency": 90000000.0,
+        "freq_estimator": "fixed",
+        "b_offset_rad": 0.02,
+        "b_drift_rad_per_block": 0.0005,
+        "amp": 0.45,
+        "demod_mode": "block_iq",
+        "iq_window": "hann"
+      },
+      "generator": {
+        "sample_rate": 48000,
+        "n": 4800,
+        "blocks": 3,
+        "beat_hz": 1000.0,
+        "b_offset_rad": 0.02,
+        "b_drift_rad_per_block": 0.0005,
+        "amp": 0.45
+      },
+      "expected": [
+        {
+          "phase_diff_rad": 0.020000000206569446,
+          "phase_diff_ps": 35.36776549682728,
+          "beat_freq": 1000.0,
+          "phase_a_ps": 2777.7777789772963,
+          "phase_b_ps": 2742.410013480469,
+          "phase_a_deg": 90.0000000388644,
+          "phase_b_deg": 88.8540844367672,
+          "rms_a": 0.3181980515339465,
+          "rms_b": 0.3181980515339465
+        },
+        {
+          "phase_diff_rad": 0.02050000021175369,
+          "phase_diff_ps": 36.251959634283345,
+          "beat_freq": 1000.0,
+          "phase_a_ps": 2777.7777789774104,
+          "phase_b_ps": 2741.5258193431273,
+          "phase_a_deg": 90.0000000388681,
+          "phase_b_deg": 88.82543654671731,
+          "rms_a": 0.31819805153394637,
+          "rms_b": 0.31819805153394637
+        },
+        {
+          "phase_diff_rad": 0.02100000021688886,
+          "phase_diff_ps": 37.13615377165263,
+          "beat_freq": 1000.0,
+          "phase_a_ps": 2777.777778977523,
+          "phase_b_ps": 2740.6416252058707,
+          "phase_a_deg": 90.00000003887175,
+          "phase_b_deg": 88.7967886566702,
+          "rms_a": 0.31819805153394637,
+          "rms_b": 0.31819805153394637
+        }
+      ]
+    },
+    {
+      "name": "block_iq_fir_two_blocks",
+      "settings": {
+        "sample_rate": 48000,
+        "block_size": 4800,
+        "beat_frequency": 1000.0,
+        "ref_frequency": 90000000.0,
+        "freq_estimator": "fixed",
+        "b_offset_rad": 0.02,
+        "b_drift_rad_per_block": 0.0005,
+        "amp": 0.45,
+        "demod_mode": "block_iq_fir",
+        "iq_window": "hann",
+        "iq_lpf_cutoff_hz": 120.0,
+        "iq_lpf_order": 4
+      },
+      "generator": {
+        "sample_rate": 48000,
+        "n": 4800,
+        "blocks": 2,
+        "beat_hz": 1000.0,
+        "b_offset_rad": 0.02,
+        "b_drift_rad_per_block": 0.0005,
+        "amp": 0.45
+      },
+      "expected": [
+        {
+          "phase_diff_rad": 0.01999987805013781,
+          "phase_diff_ps": 35.36754947682811,
+          "beat_freq": 1000.0,
+          "phase_a_ps": 2777.778435493547,
+          "phase_b_ps": 2742.410886016719,
+          "phase_a_deg": 90.00002130999091,
+          "phase_b_deg": 88.85411270694168,
+          "rms_a": 0.3181980515339465,
+          "rms_b": 0.3181980515339465
+        },
+        {
+          "phase_diff_rad": 0.02049987501070838,
+          "phase_diff_ps": 36.25173823022511,
+          "beat_freq": 1000.0,
+          "phase_a_ps": 2777.7784354936616,
+          "phase_b_ps": 2741.5266972634363,
+          "phase_a_deg": 90.00002130999462,
+          "phase_b_deg": 88.82546499133534,
+          "rms_a": 0.31819805153394637,
+          "rms_b": 0.31819805153394637
+        }
+      ]
+    },
+    {
+      "name": "pll_tracker_three_blocks",
+      "settings": {
+        "sample_rate": 48000,
+        "block_size": 4800,
+        "beat_frequency": 1000.0,
+        "ref_frequency": 90000000.0,
+        "freq_estimator": "fixed",
+        "b_offset_rad": 0.02,
+        "b_drift_rad_per_block": 0.0005,
+        "amp": 0.45,
+        "demod_mode": "pll_tracker",
+        "iq_window": "hann",
+        "pll_kp": 0.3,
+        "pll_ki": 0.03,
+        "pll_min_mag": 0.0001
+      },
+      "generator": {
+        "sample_rate": 48000,
+        "n": 4800,
+        "blocks": 3,
+        "beat_hz": 1000.0,
+        "b_offset_rad": 0.02,
+        "b_drift_rad_per_block": 0.0005,
+        "amp": 0.45
+      },
+      "expected": [
+        {
+          "phase_diff_rad": 0.005997334579888047,
+          "phase_diff_ps": 10.60561604183487,
+          "beat_freq": 1000.0,
+          "phase_a_ps": 1111944.0742389678,
+          "phase_b_ps": 1111933.4686229262,
+          "phase_a_deg": 36026.98800534256,
+          "phase_b_deg": 36026.6443833828,
+          "rms_a": 0.3181980515339465,
+          "rms_b": 0.3181980515339465
+        },
+        {
+          "phase_diff_rad": 0.013943003476924787,
+          "phase_diff_ps": 24.656643610000707,
+          "beat_freq": 1000.0,
+          "phase_a_ps": 2224231.195766592,
+          "phase_b_ps": 2224206.539122982,
+          "phase_a_deg": 72065.09074283758,
+          "phase_b_deg": 72064.29186758462,
+          "rms_a": 0.31819805153394637,
+          "rms_b": 0.31819805153394637
+        },
+        {
+          "phase_diff_rad": 0.024421246782367234,
+          "phase_diff_ps": 43.18624602089766,
+          "beat_freq": 1000.0,
+          "phase_a_ps": 3336991.6853737705,
+          "phase_b_ps": 3336948.49912775,
+          "phase_a_deg": 108118.53060611016,
+          "phase_b_deg": 108117.13137173909,
+          "rms_a": 0.31819805153394637,
+          "rms_b": 0.31819805153394637
+        }
+      ]
+    },
+    {
+      "name": "block_iq_rect_window",
+      "settings": {
+        "sample_rate": 48000,
+        "block_size": 4800,
+        "beat_frequency": 1000.0,
+        "ref_frequency": 90000000.0,
+        "freq_estimator": "fixed",
+        "b_offset_rad": 0.02,
+        "b_drift_rad_per_block": 0.0005,
+        "amp": 0.45,
+        "demod_mode": "block_iq",
+        "iq_window": "none"
+      },
+      "generator": {
+        "sample_rate": 48000,
+        "n": 4800,
+        "blocks": 2,
+        "beat_hz": 1000.0,
+        "b_offset_rad": 0.02,
+        "b_drift_rad_per_block": 0.0005,
+        "amp": 0.45
+      },
+      "expected": [
+        {
+          "phase_diff_rad": 0.019999999999991136,
+          "phase_diff_ps": 35.36776513151663,
+          "beat_freq": 1000.0,
+          "phase_a_ps": 2777.777777777778,
+          "phase_b_ps": 2742.4100126462613,
+          "phase_a_deg": 90.0,
+          "phase_b_deg": 88.85408440973886,
+          "rms_a": 0.3181980515339465,
+          "rms_b": 0.3181980515339465
+        },
+        {
+          "phase_diff_rad": 0.020500000000011953,
+          "phase_diff_ps": 36.25195925984175,
+          "beat_freq": 1000.0,
+          "phase_a_ps": 2777.777777777892,
+          "phase_b_ps": 2741.52581851805,
+          "phase_a_deg": 90.0000000000037,
+          "phase_b_deg": 88.82543651998482,
+          "rms_a": 0.31819805153394637,
+          "rms_b": 0.31819805153394637
+        }
+      ]
+    }
+  ]
+}

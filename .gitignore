@@ -19,3 +19,12 @@ frontend/node_modules/
 .idea/
 *.suo
 *.user
+.vs/
+
+# .NET build output
+**/bin/
+**/obj/
+dist/
+
+# Legacy standalone apps (superseded by PhaseLab)
+JitterMeasurement/

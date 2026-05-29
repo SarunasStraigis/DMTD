@@ -1,0 +1,9 @@
+<Solution>
+  <Project Path="PhaseLab.Shell/PhaseLab.Shell.csproj" />
+  <Project Path="PhaseLab.UI/PhaseLab.UI.csproj" />
+  <Project Path="Dmtd.Core/Dmtd.Core.csproj" />
+  <Project Path="Dmtd.Module/Dmtd.Module.csproj" />
+  <Project Path="JitterMeasurement.Core/JitterMeasurement.Core.csproj" />
+  <Project Path="JitterMeasurement.Module/JitterMeasurement.Module.csproj" />
+  <Project Path="Dmtd.Core.Tests/Dmtd.Core.Tests.csproj" />
+</Solution>
