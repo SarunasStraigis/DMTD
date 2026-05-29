@@ -1,6 +1,8 @@
 <Solution>
   <Project Path="PhaseLab.Shell/PhaseLab.Shell.csproj" />
   <Project Path="PhaseLab.UI/PhaseLab.UI.csproj" />
+  <Project Path="PhaseLab.Api/PhaseLab.Api.csproj" />
+  <Project Path="PhaseLab.Api.Host/PhaseLab.Api.Host.csproj" />
   <Project Path="Dmtd.Core/Dmtd.Core.csproj" />
   <Project Path="Dmtd.Module/Dmtd.Module.csproj" />
   <Project Path="JitterMeasurement.Core/JitterMeasurement.Core.csproj" />

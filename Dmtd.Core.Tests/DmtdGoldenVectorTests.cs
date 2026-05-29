@@ -62,7 +62,9 @@ public sealed class DmtdGoldenVectorTests
         new()
         {
             SampleRate = settings.SampleRate,
-            BlockSize = settings.BlockSize,
+            BlockDurationMs = settings.SampleRate > 0
+                ? settings.BlockSize * 1000.0 / settings.SampleRate
+                : 1000.0,
             BeatFrequency = settings.BeatFrequency,
             RefFrequency = settings.RefFrequency,
             FreqEstimator = settings.FreqEstimator,

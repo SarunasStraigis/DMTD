@@ -4,6 +4,7 @@
         Title="PhaseLab"
         Height="900"
         Width="1280"
+        Icon="Assets/app.ico"
         MinHeight="700"
         MinWidth="1000"
         Background="{DynamicResource AppBackgroundBrush}"
@@ -17,13 +18,18 @@
         <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}"
                 BorderBrush="{DynamicResource SurfaceBorderBrush}" BorderThickness="0,0,0,1"
                 Padding="12,8">
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="PhaseLab" FontSize="16" FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
-                <TextBlock Text="Mode:" Style="{StaticResource LabelTextBlock}" Margin="20,0,8,0"/>
-                <ComboBox x:Name="ModeComboBox" Style="{StaticResource ModeToolbarComboBox}"
-                          SelectionChanged="ModeComboBox_SelectionChanged"/>
-            </StackPanel>
+            <Grid>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="PhaseLab" FontSize="16" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                    <TextBlock Text="Mode:" Style="{StaticResource LabelTextBlock}" Margin="20,0,8,0"/>
+                    <ComboBox x:Name="ModeComboBox" Style="{StaticResource ModeToolbarComboBox}"
+                              SelectionChanged="ModeComboBox_SelectionChanged"/>
+                </StackPanel>
+                <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Hyperlink Click="OpenApiDocs_Click">API Docs</Hyperlink>
+                </TextBlock>
+            </Grid>
         </Border>
 
         <ContentControl x:Name="ModuleContent" Grid.Row="1"/>

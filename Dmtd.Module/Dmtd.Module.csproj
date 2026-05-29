@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\PhaseLab.UI\PhaseLab.UI.csproj" />
+    <ProjectReference Include="..\PhaseLab.Api\PhaseLab.Api.csproj" />
     <ProjectReference Include="..\Dmtd.Core\Dmtd.Core.csproj" />
   </ItemGroup>
 

@@ -1,6 +1,8 @@
-using JitterMeasurement.Module.Services;
 using JitterMeasurement.Core;
 using JitterMeasurement.Core.Models;
+using JitterMeasurement.Module.Api;
+using JitterMeasurement.Module.Services;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
@@ -16,6 +18,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private readonly DispatcherTimer _uiTimer;
     private readonly AppSettings _settings = new();
     private readonly SavedSettings _savedSettings;
+    private readonly ObservableCollection<AudioDeviceInfo> _devices = new();
 
     private PhaseDetectorCal? _storedCalibration;
     private AnalysisSnapshot? _latestSnapshot;
@@ -36,7 +39,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         var ringCapacity = (int)(_settings.SampleRate * (_settings.TimeWindowMs / 1000.0) * 2);
         _ringBuffer = new AudioRingBuffer(Math.Max(ringCapacity, 8192));
 
-        Devices = new List<AudioDeviceInfo>(AudioCaptureService.GetInputDevices());
+        Devices = _devices;
+        foreach (var device in AudioCaptureService.GetInputDevices())
+        {
+            _devices.Add(device);
+        }
+
         _selectedDevice = ResolveDevice(_settings.DeviceId);
         _storedCalibration = _savedSettings.Calibration is { KpdVPerRad: > 0 } cal ? cal : null;
 
@@ -93,6 +101,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public event Action? FftViewRangeChanged;
 
     public IReadOnlyList<AudioDeviceInfo> Devices { get; }
+    public int CaptureSampleRate => _capture.SampleRate;
     public IReadOnlyList<int> SampleRates { get; }
     public IReadOnlyList<int> InputChannels { get; } = new[] { 1, 2 };
 
@@ -288,6 +297,43 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     public ICommand CalibrateCommand { get; }
 
     public AnalysisSnapshot? LatestSnapshot => _latestSnapshot;
+
+    public JitterSnapshotData GetApiMetrics()
+    {
+        var snapshot = _latestSnapshot;
+        var jitter = snapshot?.Jitter;
+        var calibration = _storedCalibration ?? snapshot?.Calibration;
+
+        return new JitterSnapshotData
+        {
+            JitterRmsFs = jitter?.IsValid == true ? jitter.SigmaTFs : null,
+            IntegratedFs = jitter?.IsValid == true ? jitter.IntegratedTFs : null,
+            SigmaVRms = jitter?.IsValid == true ? jitter.SigmaVRms : null,
+            SigmaPhiRad = jitter?.IsValid == true ? jitter.SigmaPhiRad : null,
+            HarmonicFrequencyHz = jitter?.IsValid == true ? jitter.HarmonicFrequencyHz : null,
+            Calibrated = calibration is { KpdVPerRad: > 0 },
+            Vpp = calibration?.Vpp,
+            KpdVPerRad = calibration?.KpdVPerRad,
+            IsClipping = jitter?.IsClipping ?? calibration?.IsClipping ?? false,
+            IsValid = jitter?.IsValid ?? false,
+            Message = jitter?.Message
+        };
+    }
+
+    public void RefreshDevices()
+    {
+        var previousId = _selectedDevice?.Id ?? _settings.DeviceId;
+        _devices.Clear();
+        foreach (var device in AudioCaptureService.GetInputDevices())
+        {
+            _devices.Add(device);
+        }
+
+        SelectedDevice = ResolveDevice(previousId);
+        StatusText = _devices.Count > 0
+            ? $"Found {_devices.Count} input device(s)."
+            : "No input devices found.";
+    }
 
     private void ToggleCapture()
     {

@@ -59,6 +59,34 @@ public sealed class DmtdProcessor
         _pllFreqHz = null;
     }
 
+    public DspUnwrapState ExportUnwrapState(DmtdSettings settings) =>
+        new()
+        {
+            SampleRate = settings.SampleRate,
+            DemodMode = settings.DemodMode,
+            FreqEstimator = settings.FreqEstimator,
+            PrevRawA = _prevRawA,
+            PrevRawB = _prevRawB,
+            UnwrapOffsetA = _unwrapOffsetA,
+            UnwrapOffsetB = _unwrapOffsetB,
+            LastEstimatedFreq = _lastEstimatedFreq,
+            PllPhaseA = _pllPhaseA,
+            PllPhaseB = _pllPhaseB,
+            PllFreqHz = _pllFreqHz
+        };
+
+    public void RestoreUnwrapState(DspUnwrapState state)
+    {
+        _prevRawA = state.PrevRawA;
+        _prevRawB = state.PrevRawB;
+        _unwrapOffsetA = state.UnwrapOffsetA;
+        _unwrapOffsetB = state.UnwrapOffsetB;
+        _lastEstimatedFreq = state.LastEstimatedFreq;
+        _pllPhaseA = state.PllPhaseA;
+        _pllPhaseB = state.PllPhaseB;
+        _pllFreqHz = state.PllFreqHz;
+    }
+
     public BlockProcessResult ProcessBlock(ReadOnlySpan<float> chA, ReadOnlySpan<float> chB)
     {
         var n = Math.Min(chA.Length, chB.Length);

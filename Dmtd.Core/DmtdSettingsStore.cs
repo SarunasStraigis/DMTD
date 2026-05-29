@@ -22,7 +22,9 @@ public static class DmtdSettingsStore
             }
 
             var json = File.ReadAllText(AppDataPaths.DmtdSettingsFile);
-            return JsonSerializer.Deserialize<DmtdSettings>(json, JsonOptions) ?? new DmtdSettings();
+            var settings = JsonSerializer.Deserialize<DmtdSettings>(json, JsonOptions) ?? new DmtdSettings();
+            NormalizeBlockSettings(settings, json);
+            return settings;
         }
         catch
         {
@@ -62,7 +64,7 @@ public static class DmtdSettingsStore
 
             if (root.TryGetProperty("block_size", out var bs))
             {
-                settings.BlockSize = bs.GetInt32();
+                settings.BlockDurationMs = bs.GetInt32() * 1000.0 / Math.Max(1, settings.SampleRate);
             }
 
             if (root.TryGetProperty("beat_frequency", out var bf))
@@ -144,6 +146,39 @@ public static class DmtdSettingsStore
         catch
         {
             return null;
+        }
+    }
+
+    private static void NormalizeBlockSettings(DmtdSettings settings, string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("block_duration_ms", out var blockDurationMs))
+            {
+                settings.BlockDurationMs = Math.Clamp(blockDurationMs.GetDouble(), 100, 60_000);
+                return;
+            }
+
+            if (root.TryGetProperty("block_size", out var legacyBlockSize))
+            {
+                var sampleRate = settings.SampleRate > 0 ? settings.SampleRate : 192_000;
+                settings.BlockDurationMs = Math.Clamp(
+                    legacyBlockSize.GetInt32() * 1000.0 / sampleRate,
+                    100,
+                    60_000);
+                return;
+            }
+        }
+        catch
+        {
+            // Ignore malformed legacy fields.
+        }
+
+        if (settings.BlockDurationMs <= 0)
+        {
+            settings.BlockDurationMs = 1000.0;
         }
     }
 }

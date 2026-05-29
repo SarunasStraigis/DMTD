@@ -10,10 +10,17 @@
     <RootNamespace>PhaseLab.Shell</RootNamespace>
     <ApplicationTitle>PhaseLab</ApplicationTitle>
     <Version>1.0.0</Version>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
+    <Resource Include="Assets\app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\PhaseLab.UI\PhaseLab.UI.csproj" />
+    <ProjectReference Include="..\PhaseLab.Api\PhaseLab.Api.csproj" />
+    <ProjectReference Include="..\PhaseLab.Api.Host\PhaseLab.Api.Host.csproj" />
     <ProjectReference Include="..\Dmtd.Module\Dmtd.Module.csproj" />
     <ProjectReference Include="..\JitterMeasurement.Module\JitterMeasurement.Module.csproj" />
   </ItemGroup>

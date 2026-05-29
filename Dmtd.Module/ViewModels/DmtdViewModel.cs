@@ -1,12 +1,16 @@
 using Dmtd.Core;
+using Dmtd.Module.Api;
 using Dmtd.Module.Services;
 using Microsoft.Win32;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Windows;
 using System.Windows.Input;
+using System.Windows.Threading;
 
 namespace Dmtd.Module.ViewModels;
 
@@ -16,7 +20,9 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
 
     private readonly DmtdCaptureService _capture = new();
     private readonly List<double> _phasePsHistory = new();
+    private readonly object _phaseHistoryLock = new();
     private PhaseHistoryStore? _history;
+    private DispatcherTimer? _metricsTimer;
     private DmtdSettings _settings;
     private AudioDeviceInfo? _selectedInputDevice;
     private bool _isCapturing;
@@ -30,6 +36,9 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
     private string _secondaryMetricTitle = "Moving average";
     private string _secondaryMetricValue = "—";
     private string _secondaryMetricUnit = "ps";
+    private string _stdMetricTitle = "σ (std dev)";
+    private string _stdMetricValue = "—";
+    private string _stdMetricUnit = "ps";
     private string _detailMetrics = "Start capture to begin live phase measurement.";
     private bool _showSlipWarning;
     private string _slipWarningText = string.Empty;
@@ -39,10 +48,12 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
     private EnumOption<FreqSource>? _selectedFreqSource;
     private EnumOption<DemodMode>? _selectedDemodMode;
     private EnumOption<IqWindow>? _selectedIqWindow;
+    private string _blockDurationMsText = string.Empty;
 
     public DmtdViewModel()
     {
         _settings = DmtdSettingsStore.Load();
+        _blockDurationMsText = FormatBlockDurationMs(_settings.BlockDurationMs);
         InputDevices = new ObservableCollection<AudioDeviceInfo>(AudioDeviceEnumerator.GetInputDevices());
         _selectedInputDevice = ResolveDevice(InputDevices, _settings.DeviceId);
 
@@ -79,15 +90,18 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
         SetZeroCommand = new RelayCommand(SetZero);
         ClearZeroCommand = new RelayCommand(ClearZero);
         SaveConfigCommand = new RelayCommand(SaveConfig);
-        CaptureSnapshotCommand = new RelayCommand(CaptureSnapshot, () => IsCapturing);
         ResetPhaseCommand = new RelayCommand(ResetPhaseSession);
         DownloadHistoryCommand = new RelayCommand(DownloadHistoryCsv);
+        RefreshInputDevicesCommand = new RelayCommand(RefreshInputDevices);
 
         _capture.LivePointAvailable += point =>
         {
-            RecordPhasePoint(point);
-            LatestPoint = point;
-            UpdateMetricDisplay();
+            lock (_phaseHistoryLock)
+            {
+                RecordPhasePoint(point);
+            }
+
+            _latestPoint = point;
             NoteHistoryRowLogged(point);
             LivePointReceived?.Invoke(point);
         };
@@ -98,7 +112,6 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
 
     public event PropertyChangedEventHandler? PropertyChanged;
     public event Action<LivePoint>? LivePointReceived;
-    public event Action? SnapshotCaptured;
     public event Action? PhaseSessionReset;
 
     public ObservableCollection<AudioDeviceInfo> InputDevices { get; }
@@ -132,24 +145,49 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
             {
                 _settings.SampleRate = value;
                 OnPropertyChanged();
+                OnPropertyChanged(nameof(BlockSizeDisplay));
                 PersistSettings();
             }
         }
     }
 
-    public int BlockSize
+    public string BlockDurationMsText
     {
-        get => _settings.BlockSize;
+        get => _blockDurationMsText;
         set
         {
-            if (_settings.BlockSize != value)
+            if (string.IsNullOrWhiteSpace(value))
             {
-                _settings.BlockSize = Math.Clamp(value, 1024, 1_920_000);
-                OnPropertyChanged();
+                ResetBlockDurationMsText();
+                return;
+            }
+
+            if (!double.TryParse(value.Trim(), NumberStyles.Float, CultureInfo.CurrentCulture, out var parsed) &&
+                !double.TryParse(value.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out parsed))
+            {
+                ResetBlockDurationMsText();
+                return;
+            }
+
+            var clamped = Math.Clamp(parsed, 100, 60_000);
+            if (Math.Abs(_settings.BlockDurationMs - clamped) > 0.01)
+            {
+                _settings.BlockDurationMs = clamped;
+                OnPropertyChanged(nameof(BlockSizeDisplay));
                 PersistSettings();
+            }
+
+            var formatted = FormatBlockDurationMs(clamped);
+            if (_blockDurationMsText != formatted)
+            {
+                _blockDurationMsText = formatted;
+                OnPropertyChanged();
             }
         }
     }
+
+    public string BlockSizeDisplay =>
+        $"{_settings.ResolveBlockSize(_settings.SampleRate):N0} samples @ {_settings.SampleRate / 1000.0:F0} kHz";
 
     public double BeatFrequency
     {
@@ -415,6 +453,24 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
         private set => SetField(ref _secondaryMetricUnit, value);
     }
 
+    public string StdMetricTitle
+    {
+        get => _stdMetricTitle;
+        private set => SetField(ref _stdMetricTitle, value);
+    }
+
+    public string StdMetricValue
+    {
+        get => _stdMetricValue;
+        private set => SetField(ref _stdMetricValue, value);
+    }
+
+    public string StdMetricUnit
+    {
+        get => _stdMetricUnit;
+        private set => SetField(ref _stdMetricUnit, value);
+    }
+
     public string DetailMetrics
     {
         get => _detailMetrics;
@@ -498,9 +554,9 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
     public ICommand SetZeroCommand { get; }
     public ICommand ClearZeroCommand { get; }
     public ICommand SaveConfigCommand { get; }
-    public ICommand CaptureSnapshotCommand { get; }
     public ICommand ResetPhaseCommand { get; }
     public ICommand DownloadHistoryCommand { get; }
+    public ICommand RefreshInputDevicesCommand { get; }
 
     public void Activate()
     {
@@ -514,12 +570,64 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    public DmtdSnapshotData? GetApiMetrics()
+    {
+        List<double> phaseHistorySnapshot;
+        lock (_phaseHistoryLock)
+        {
+            phaseHistorySnapshot = _phasePsHistory.ToList();
+        }
+
+        if (_latestPoint is null)
+        {
+            return new DmtdSnapshotData
+            {
+                MaWindow = _maWindow,
+                PhaseZeroActive = PhaseZeroActive,
+                PhaseZeroOffsetPs = _settings.PhaseZeroOffsetPs
+            };
+        }
+
+        var latest = _latestPoint;
+        var stats = ComputeStats(phaseHistorySnapshot);
+        return new DmtdSnapshotData
+        {
+            PhaseDiffPs = latest.PhaseDiffPs,
+            PhaseDiffRad = latest.PhaseDiffRad,
+            BeatFreqHz = latest.BeatFreq,
+            MovingAveragePs = ComputeMovingAverage(phaseHistorySnapshot),
+            StdDevPs = stats?.Std,
+            MaWindow = _maWindow,
+            PhaseZeroActive = PhaseZeroActive,
+            PhaseZeroOffsetPs = _settings.PhaseZeroOffsetPs,
+            RmsA = latest.RmsA,
+            RmsB = latest.RmsB,
+            SlipCount = latest.SlipCount,
+            LatestTimestamp = latest.Timestamp
+        };
+    }
+
     private void NotifyConfigVisibility()
     {
         OnPropertyChanged(nameof(ShowFreqSource));
         OnPropertyChanged(nameof(ShowIqLpfFields));
         OnPropertyChanged(nameof(ShowIqMinMag));
         OnPropertyChanged(nameof(ShowPllFields));
+    }
+
+    private void RefreshInputDevices()
+    {
+        var previousId = _selectedInputDevice?.Id ?? _settings.DeviceId;
+        InputDevices.Clear();
+        foreach (var device in AudioDeviceEnumerator.GetInputDevices())
+        {
+            InputDevices.Add(device);
+        }
+
+        SelectedInputDevice = ResolveDevice(InputDevices, previousId);
+        StatusText = InputDevices.Count > 0
+            ? $"Found {InputDevices.Count} input device(s)."
+            : "No input devices found.";
     }
 
     private void ToggleCapture()
@@ -549,6 +657,7 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
             _capture.Start(_settings, history);
             IsCapturing = true;
             StatusText = $"Capturing at {_capture.SampleRate} Hz";
+            StartMetricsTimer();
             UpdateMetricDisplay();
             RefreshExportableRowCount();
         }
@@ -562,14 +671,45 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
     {
         _capture.Stop();
         IsCapturing = false;
+        StopMetricsTimer();
         StatusText = "Stopped";
         UpdateMetricDisplay();
         RefreshExportableRowCount();
+        PersistSettings();
     }
 
     private void EnsureHistoryStore()
     {
         _history ??= new PhaseHistoryStore(AppDataPaths.DmtdHistoryFile);
+    }
+
+    private void StartMetricsTimer()
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null)
+        {
+            return;
+        }
+
+        _metricsTimer ??= new DispatcherTimer(TimeSpan.FromMilliseconds(100), DispatcherPriority.DataBind, (_, _) =>
+        {
+            if (!IsCapturing)
+            {
+                return;
+            }
+
+            UpdateMetricDisplay();
+        }, dispatcher);
+
+        if (!_metricsTimer.IsEnabled)
+        {
+            _metricsTimer.Start();
+        }
+    }
+
+    private void StopMetricsTimer()
+    {
+        _metricsTimer?.Stop();
     }
 
     private void SetZero()
@@ -593,6 +733,7 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
     {
         _settings.PhaseZeroOffsetRad = 0;
         _settings.PhaseZeroOffsetPs = 0;
+        _settings.SavedUnwrapState = null;
         _capture.SetPhaseZeroOffset(0, 0);
         NotifyPhaseZeroChanged();
         PersistSettings();
@@ -609,11 +750,6 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
     {
         PersistSettings();
         StatusText = "Configuration saved.";
-    }
-
-    private void CaptureSnapshot()
-    {
-        SnapshotCaptured?.Invoke();
     }
 
     private void ResetPhaseSession()
@@ -723,13 +859,22 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
     {
         PrimaryMetricTitle = "Latest Δt";
         SecondaryMetricTitle = "Moving average";
+        StdMetricTitle = "σ (std dev)";
 
-        if (_latestPoint is null || _phasePsHistory.Count == 0)
+        List<double> phaseHistorySnapshot;
+        lock (_phaseHistoryLock)
+        {
+            phaseHistorySnapshot = _phasePsHistory.ToList();
+        }
+
+        if (_latestPoint is null || phaseHistorySnapshot.Count == 0)
         {
             PrimaryMetricValue = "—";
             PrimaryMetricUnit = "ps";
             SecondaryMetricValue = "—";
             SecondaryMetricUnit = "ps";
+            StdMetricValue = "—";
+            StdMetricUnit = "ps";
             DetailMetrics = IsCapturing
                 ? "Waiting for phase data..."
                 : "Start capture to begin live phase measurement.";
@@ -741,7 +886,7 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
         PrimaryMetricValue = latestValue;
         PrimaryMetricUnit = latestUnit;
 
-        var ma = ComputeMovingAverage();
+        var ma = ComputeMovingAverage(phaseHistorySnapshot);
         if (ma is null)
         {
             SecondaryMetricValue = "—";
@@ -755,10 +900,10 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
         }
 
         var diffDeg = PhaseMetricFormatter.PhaseDiffDeg(latest.PhaseDiffRad);
-        var stats = ComputeStats(_phasePsHistory);
+        var stats = ComputeStats(phaseHistorySnapshot);
         var detail = new StringBuilder();
         detail.AppendLine($"Beat-note phase: {diffDeg:F2}°");
-        detail.AppendLine($"Window: {_maWindow} samples ({Math.Min(_maWindow, _phasePsHistory.Count)} effective)");
+        detail.AppendLine($"Window: {_maWindow} samples ({Math.Min(_maWindow, phaseHistorySnapshot.Count)} effective)");
         detail.AppendLine();
         detail.AppendLine($"Beat frequency: {latest.BeatFreq:F2} Hz");
         detail.AppendLine($"RMS A / B: {latest.RmsA:F3} / {latest.RmsB:F3}");
@@ -766,14 +911,22 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
 
         if (stats is PhaseStats phaseStats)
         {
+            var (stdValue, stdUnit) = PhaseMetricFormatter.FormatHero(phaseStats.Std);
+            StdMetricValue = stdValue;
+            StdMetricUnit = stdUnit;
+
             detail.AppendLine();
-            detail.Append($"σ {PhaseMetricFormatter.FormatCompact(phaseStats.Std)}");
-            detail.Append($"   mean {PhaseMetricFormatter.FormatCompact(phaseStats.Mean)}");
+            detail.Append($"mean {PhaseMetricFormatter.FormatCompact(phaseStats.Mean)}");
             detail.AppendLine();
             detail.Append($"min {PhaseMetricFormatter.FormatCompact(phaseStats.Min)}");
             detail.Append($"   max {PhaseMetricFormatter.FormatCompact(phaseStats.Max)}");
             detail.AppendLine();
             detail.Append($"n = {phaseStats.Count:N0}");
+        }
+        else
+        {
+            StdMetricValue = "—";
+            StdMetricUnit = "ps";
         }
 
         if (latest.SlipCount > 0)
@@ -798,19 +951,19 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private double? ComputeMovingAverage()
+    private double? ComputeMovingAverage(IReadOnlyList<double> phaseHistory)
     {
-        if (_phasePsHistory.Count == 0)
+        if (phaseHistory.Count == 0)
         {
             return null;
         }
 
-        var span = Math.Min(_maWindow, _phasePsHistory.Count);
-        var start = _phasePsHistory.Count - span;
+        var span = Math.Min(_maWindow, phaseHistory.Count);
+        var start = phaseHistory.Count - span;
         double sum = 0;
-        for (var i = start; i < _phasePsHistory.Count; i++)
+        for (var i = start; i < phaseHistory.Count; i++)
         {
-            sum += _phasePsHistory[i];
+            sum += phaseHistory[i];
         }
 
         return sum / span;
@@ -857,6 +1010,21 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
 
     private void PersistSettings() => DmtdSettingsStore.Save(_settings);
 
+    private void ResetBlockDurationMsText()
+    {
+        var formatted = FormatBlockDurationMs(_settings.BlockDurationMs);
+        if (_blockDurationMsText != formatted)
+        {
+            _blockDurationMsText = formatted;
+            OnPropertyChanged(nameof(BlockDurationMsText));
+        }
+    }
+
+    private static string FormatBlockDurationMs(double ms) =>
+        Math.Abs(ms - Math.Round(ms)) < 0.01
+            ? Math.Round(ms).ToString("0", CultureInfo.InvariantCulture)
+            : ms.ToString("0.##", CultureInfo.InvariantCulture);
+
     private static AudioDeviceInfo? ResolveDevice(IEnumerable<AudioDeviceInfo> devices, string? id) =>
         string.IsNullOrWhiteSpace(id)
             ? devices.FirstOrDefault()
@@ -880,6 +1048,7 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
     public void Dispose()
     {
         Deactivate();
+        StopMetricsTimer();
         _history?.Dispose();
         _capture.Dispose();
         PersistSettings();

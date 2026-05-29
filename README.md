@@ -59,6 +59,16 @@ dotnet run --project PhaseLab.Shell/PhaseLab.Shell.csproj
 
 Output: `dist/PhaseLab.exe`
 
+### REST API
+
+While PhaseLab is running, a localhost REST API is available for scripting and automation:
+
+- **Docs:** [docs/API.md](docs/API.md)
+- **Swagger UI:** http://127.0.0.1:8787/docs (when the app is open)
+- **Poll metrics:** `GET /api/modules/{dmtd|jitter}/snapshot`
+
+Configure port and enable/disable in `%AppData%\PhaseLab\settings.json` (`apiEnabled`, `apiPort`).
+
 ### Legacy Python/React stack
 
 The `python desktop.py` launcher and `backend/` + `frontend/` stack remain in the repo for reference but are **deprecated** in favor of PhaseLab.
@@ -109,7 +119,11 @@ Interactive API docs: `http://localhost:8000/docs`
 
 ---
 
-## REST API Summary
+## REST API (PhaseLab)
+
+PhaseLab includes an embedded localhost API. See [docs/API.md](docs/API.md) for endpoints, snapshot fields, and curl examples. Interactive OpenAPI docs: `http://127.0.0.1:8787/docs`.
+
+## Legacy REST API (deprecated Python stack)
 
 | Method | Path | Description |
 |--------|------|-------------|

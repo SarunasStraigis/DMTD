@@ -21,6 +21,8 @@
                           ItemsSource="{Binding InputDevices}"
                           SelectedItem="{Binding SelectedInputDevice}"
                           DisplayMemberPath="Name"/>
+                <Button Content="Refresh" Command="{Binding RefreshInputDevicesCommand}"
+                        Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" Padding="10,4"/>
                 <TextBlock Text="Rate:" Style="{StaticResource LabelTextBlock}" Margin="12,0,8,0"/>
                 <ComboBox Width="90" Style="{StaticResource StyledComboBox}"
                           ItemsSource="{Binding SampleRates}"
@@ -118,6 +120,13 @@
                                     <TextBlock Text="{Binding SecondaryMetricUnit}" Style="{StaticResource MetricsSecondaryUnit}"/>
                                 </StackPanel>
 
+                                <TextBlock Text="{Binding StdMetricTitle}" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,8"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
+                                    <TextBlock Text="{Binding StdMetricValue}" Style="{StaticResource MetricsAccentValue}"/>
+                                    <TextBlock Text="{Binding StdMetricUnit}" Style="{StaticResource MetricsAccentUnit}"/>
+                                </StackPanel>
+
                                 <TextBlock Text="{Binding DetailMetrics}" Style="{StaticResource MetricsDetail}"/>
                                 <TextBlock Text="{Binding SlipWarningText}" FontSize="14" FontWeight="Bold"
                                            Foreground="{DynamicResource WarningBrush}" Margin="0,16,0,0">
@@ -143,18 +152,11 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
-                        <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
-                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
-                        <CheckBox Content="Live" IsChecked="{Binding ChannelsLiveEnabled}" VerticalAlignment="Center"/>
-                        <Button Content="Capture snapshot" Command="{Binding CaptureSnapshotCommand}"
-                                Style="{StaticResource SecondaryButton}" Margin="12,0,0,0"/>
-                    </StackPanel>
-                    <Border Grid.Row="1" Style="{StaticResource CardBorder}" Margin="0,0,0,8">
+                    <CheckBox Grid.Row="0" Content="Live" IsChecked="{Binding ChannelsLiveEnabled}"
+                              VerticalAlignment="Center" Margin="0,0,0,8"/>
+                    <Border Grid.Row="1" Style="{StaticResource CardBorder}">
                         <ScottPlot:WpfPlot x:Name="ChannelPlot"/>
-                    </Border>
-                    <Border Grid.Row="2" Style="{StaticResource CardBorder}">
-                        <ScottPlot:WpfPlot x:Name="SnapshotPlot"/>
                     </Border>
                 </Grid>
             </TabItem>
@@ -176,9 +178,11 @@
                                              Text="{Binding RefFrequencyMhz, UpdateSourceTrigger=PropertyChanged}"/>
                                 </StackPanel>
                                 <StackPanel Margin="0,0,8,8">
-                                    <TextBlock Text="Block size (samples)" Style="{StaticResource LabelTextBlock}"/>
+                                    <TextBlock Text="Block duration (ms)" Style="{StaticResource LabelTextBlock}"/>
                                     <TextBox Style="{StaticResource StyledTextBox}"
-                                             Text="{Binding BlockSize, UpdateSourceTrigger=PropertyChanged}"/>
+                                             Text="{Binding BlockDurationMsText, UpdateSourceTrigger=LostFocus}"/>
+                                    <TextBlock Text="{Binding BlockSizeDisplay}" FontSize="11"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/>
                                 </StackPanel>
                                 <StackPanel Margin="8,0,0,8">
                                     <TextBlock Text="Expansion factor (computed)" Style="{StaticResource LabelTextBlock}"/>

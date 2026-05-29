@@ -14,9 +14,11 @@ public sealed class DmtdCaptureService : IDisposable
     private WasapiCapture? _capture;
     private CancellationTokenSource? _workerCts;
     private Task? _workerTask;
-    private DmtdProcessor? _processor;
     private DmtdSettings? _settings;
     private PhaseHistoryStore? _history;
+
+    private readonly List<float> _blockLeft = new();
+    private readonly List<float> _blockRight = new();
 
     private double _phaseZeroOffsetRad;
     private double? _prevPhaseDiffRadRaw;
@@ -24,6 +26,8 @@ public sealed class DmtdCaptureService : IDisposable
     private int _lastSlipK;
     private double _lastSlipStepRad;
     private DateTimeOffset? _lastSlipTime;
+    private DmtdProcessor? _processor;
+    private ProcessorConfig? _processorConfig;
 
     public event Action<LivePoint>? LivePointAvailable;
     public event Action<string>? ErrorOccurred;
@@ -37,14 +41,31 @@ public sealed class DmtdCaptureService : IDisposable
 
     public void Start(DmtdSettings settings, PhaseHistoryStore? history)
     {
-        Stop();
+        StopCaptureStream();
+
+        var processorConfig = ProcessorConfig.From(settings);
+        if (_processor is null || _processorConfig != processorConfig)
+        {
+            _processor = new DmtdProcessor(settings);
+            if (settings.SavedUnwrapState?.Matches(settings) == true)
+            {
+                _processor.RestoreUnwrapState(settings.SavedUnwrapState);
+            }
+            else
+            {
+                _processor.Reset();
+            }
+
+            _processorConfig = processorConfig;
+        }
+
         _settings = settings;
         _history = history;
-        _processor = new DmtdProcessor(settings);
-        _processor.Reset();
         _phaseZeroOffsetRad = settings.PhaseZeroOffsetRad;
         _prevPhaseDiffRadRaw = null;
         _slipCount = 0;
+        _blockLeft.Clear();
+        _blockRight.Clear();
 
         var device = ResolveDevice(settings.DeviceId);
         _capture = new WasapiCapture(device) { ShareMode = AudioClientShareMode.Shared };
@@ -71,6 +92,22 @@ public sealed class DmtdCaptureService : IDisposable
 
     public void Stop()
     {
+        CaptureUnwrapState();
+        StopCaptureStream();
+    }
+
+    public void CaptureUnwrapState()
+    {
+        if (_processor is null || _settings is null)
+        {
+            return;
+        }
+
+        _settings.SavedUnwrapState = _processor.ExportUnwrapState(_settings);
+    }
+
+    private void StopCaptureStream()
+    {
         if (_capture is null)
         {
             return;
@@ -95,7 +132,8 @@ public sealed class DmtdCaptureService : IDisposable
         _workerCts?.Dispose();
         _workerCts = null;
         _workerTask = null;
-        _processor = null;
+        _blockLeft.Clear();
+        _blockRight.Clear();
         while (_blockQueue.TryDequeue(out _))
         {
         }
@@ -109,6 +147,8 @@ public sealed class DmtdCaptureService : IDisposable
             _settings.PhaseZeroOffsetRad = offsetRad;
             _settings.PhaseZeroOffsetPs = offsetPs;
         }
+
+        CaptureUnwrapState();
     }
 
     public (double Rad, double Ps)? GetLatestRawPhase()
@@ -147,6 +187,7 @@ public sealed class DmtdCaptureService : IDisposable
         }
 
         var result = _processor.ProcessBlock(left, right);
+
         var combinedRad = result.PhaseDiffRad + _phaseZeroOffsetRad;
         var phaseRad = PhaseMath.WrapPrincipal(combinedRad);
         var phasePs = phaseRad * PhaseMath.PsPerRad(_settings.RefFrequency);
@@ -214,11 +255,32 @@ public sealed class DmtdCaptureService : IDisposable
             }
 
             _snapshot.Write(left, right);
-            _blockQueue.Enqueue((left, right));
+            AppendSamples(left, right);
         }
         catch (Exception ex)
         {
             ErrorOccurred?.Invoke(ex.Message);
+        }
+    }
+
+    private void AppendSamples(float[] left, float[] right)
+    {
+        if (_settings is null || left.Length == 0)
+        {
+            return;
+        }
+
+        _blockLeft.AddRange(left);
+        _blockRight.AddRange(right);
+
+        var blockSize = _settings.ResolveBlockSize(SampleRate);
+        while (_blockLeft.Count >= blockSize)
+        {
+            var blockLeft = _blockLeft.GetRange(0, blockSize).ToArray();
+            var blockRight = _blockRight.GetRange(0, blockSize).ToArray();
+            _blockLeft.RemoveRange(0, blockSize);
+            _blockRight.RemoveRange(0, blockSize);
+            _blockQueue.Enqueue((blockLeft, blockRight));
         }
     }
 
@@ -269,5 +331,43 @@ public sealed class DmtdCaptureService : IDisposable
         return enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia);
     }
 
-    public void Dispose() => Stop();
+    public void Dispose()
+    {
+        CaptureUnwrapState();
+        StopCaptureStream();
+        _processor = null;
+        _processorConfig = null;
+    }
+
+    private readonly record struct ProcessorConfig(
+        int SampleRate,
+        double BeatFrequency,
+        double RefFrequency,
+        FreqEstimator FreqEstimator,
+        DemodMode DemodMode,
+        FreqSource FreqSource,
+        double IqLpfCutoffHz,
+        int IqLpfOrder,
+        double IqMinMag,
+        IqWindow IqWindow,
+        double PllKp,
+        double PllKi,
+        double PllMinMag)
+    {
+        public static ProcessorConfig From(DmtdSettings settings) =>
+            new(
+                settings.SampleRate,
+                settings.BeatFrequency,
+                settings.RefFrequency,
+                settings.FreqEstimator,
+                settings.DemodMode,
+                settings.FreqSource,
+                settings.IqLpfCutoffHz,
+                settings.IqLpfOrder,
+                settings.IqMinMag,
+                settings.IqWindow,
+                settings.PllKp,
+                settings.PllKi,
+                settings.PllMinMag);
+    }
 }

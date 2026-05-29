@@ -6,6 +6,8 @@ namespace PhaseLab.Shell.Services;
 public sealed class ShellSettings
 {
     public string ActiveModeId { get; set; } = "dmtd";
+    public bool ApiEnabled { get; set; } = true;
+    public int ApiPort { get; set; } = 8787;
 }
 
 public static class ShellSettingsStore

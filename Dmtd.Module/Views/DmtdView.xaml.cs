@@ -3,23 +3,29 @@ using Dmtd.Module.ViewModels;
 using PhaseLab.UI;
 using ScottPlot;
 using ScottPlot.Plottables;
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 
 namespace Dmtd.Module.Views;
 
 public partial class DmtdView : UserControl
 {
     private const int MaxPhasePoints = 3600;
+    private static readonly TimeSpan PlotRefreshInterval = TimeSpan.FromMilliseconds(100);
 
     private readonly DmtdViewModel _viewModel;
     private readonly List<double> _phaseTimes = new();
     private readonly List<double> _phasePs = new();
     private readonly List<double> _phaseMa = new();
-    private SignalXY? _phaseSignal;
-    private SignalXY? _maSignal;
+    private readonly ConcurrentQueue<LivePoint> _pendingPoints = new();
+    private LivePoint? _latestPoint;
     private double _sessionStart;
+    private bool _uiRefreshScheduled;
+    private DateTime _lastPhasePlotRefresh = DateTime.MinValue;
+    private DateTime _lastChannelPlotRefresh = DateTime.MinValue;
 
     public DmtdView(DmtdViewModel viewModel)
     {
@@ -29,8 +35,7 @@ public partial class DmtdView : UserControl
 
         ConfigurePlots();
         _viewModel.LivePointReceived += OnLivePoint;
-        _viewModel.PhaseSessionReset += OnPhaseSessionReset;
-        _viewModel.SnapshotCaptured += UpdateSnapshotPlot;
+        _viewModel.PhaseSessionReset += () => Dispatcher.BeginInvoke(DispatcherPriority.Background, OnPhaseSessionReset);
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         ThemeService.ThemeChanged += OnThemeChanged;
         Unloaded += (_, _) => ThemeService.ThemeChanged -= OnThemeChanged;
@@ -46,65 +51,109 @@ public partial class DmtdView : UserControl
         ChannelPlot.Plot.Axes.Bottom.Label.Text = "Time (s)";
         ChannelPlot.Plot.Axes.Left.Label.Text = "Amplitude";
 
-        SnapshotPlot.Plot.Title("Waveform snapshot");
-        SnapshotPlot.Plot.Axes.Bottom.Label.Text = "Sample";
-        SnapshotPlot.Plot.Axes.Left.Label.Text = "Amplitude";
-
         ApplyPlotChrome();
     }
 
-    private void OnThemeChanged(AppTheme theme) => Dispatcher.Invoke(ApplyPlotChrome);
+    private void OnThemeChanged(AppTheme theme) =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, ApplyPlotChrome);
 
     private void ApplyPlotChrome()
     {
         PlotThemeHelper.ApplyChrome(PhasePlot);
         PlotThemeHelper.ApplyChrome(ChannelPlot);
-        PlotThemeHelper.ApplyChrome(SnapshotPlot);
         PhasePlot.Refresh();
         ChannelPlot.Refresh();
-        SnapshotPlot.Refresh();
     }
 
     private void OnLivePoint(LivePoint point)
     {
-        Dispatcher.Invoke(() =>
+        _pendingPoints.Enqueue(point);
+        ScheduleUiRefresh();
+    }
+
+    private void ScheduleUiRefresh()
+    {
+        if (_uiRefreshScheduled)
         {
-            if (_phaseTimes.Count == 0)
-            {
-                _sessionStart = point.Timestamp.ToUnixTimeMilliseconds() / 1000.0;
-            }
+            return;
+        }
 
-            var t = point.Timestamp.ToUnixTimeMilliseconds() / 1000.0 - _sessionStart;
-            _phaseTimes.Add(t);
-            _phasePs.Add(point.PhaseDiffPs);
-            RecomputeMa();
+        _uiRefreshScheduled = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, ProcessPendingUiUpdates);
+    }
 
-            while (_phaseTimes.Count > MaxPhasePoints)
-            {
-                _phaseTimes.RemoveAt(0);
-                _phasePs.RemoveAt(0);
-                _phaseMa.RemoveAt(0);
-            }
+    private void ProcessPendingUiUpdates()
+    {
+        _uiRefreshScheduled = false;
 
+        var hadPoints = false;
+        while (_pendingPoints.TryDequeue(out var point))
+        {
+            AppendPhasePoint(point);
+            hadPoints = true;
+        }
+
+        if (!hadPoints)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        if (now - _lastPhasePlotRefresh >= PlotRefreshInterval || _pendingPoints.IsEmpty)
+        {
             UpdatePhasePlot();
+            _lastPhasePlotRefresh = now;
+        }
+        else
+        {
+            ScheduleUiRefresh();
+        }
 
-            if (_viewModel.ChannelsLiveEnabled)
-            {
-                UpdateChannelPlot(point);
-            }
-        });
+        if (_viewModel.ChannelsLiveEnabled &&
+            _latestPoint is not null &&
+            now - _lastChannelPlotRefresh >= PlotRefreshInterval)
+        {
+            UpdateChannelPlot();
+            _lastChannelPlotRefresh = now;
+        }
+    }
+
+    private void AppendPhasePoint(LivePoint point)
+    {
+        _latestPoint = point;
+
+        if (_phaseTimes.Count == 0)
+        {
+            _sessionStart = point.Timestamp.ToUnixTimeMilliseconds() / 1000.0;
+        }
+
+        var t = point.Timestamp.ToUnixTimeMilliseconds() / 1000.0 - _sessionStart;
+        _phaseTimes.Add(t);
+        _phasePs.Add(point.PhaseDiffPs);
+        AppendMovingAverage();
+
+        while (_phaseTimes.Count > MaxPhasePoints)
+        {
+            _phaseTimes.RemoveAt(0);
+            _phasePs.RemoveAt(0);
+            _phaseMa.RemoveAt(0);
+        }
     }
 
     private void OnPhaseSessionReset()
     {
-        Dispatcher.Invoke(() =>
+        while (_pendingPoints.TryDequeue(out _))
         {
-            _phaseTimes.Clear();
-            _phasePs.Clear();
-            _phaseMa.Clear();
-            _sessionStart = 0;
-            UpdatePhasePlot();
-        });
+        }
+
+        _phaseTimes.Clear();
+        _phasePs.Clear();
+        _phaseMa.Clear();
+        _sessionStart = 0;
+        _latestPoint = null;
+        _lastPhasePlotRefresh = DateTime.MinValue;
+        _lastChannelPlotRefresh = DateTime.MinValue;
+        UpdatePhasePlot();
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -114,11 +163,26 @@ public partial class DmtdView : UserControl
             return;
         }
 
-        Dispatcher.Invoke(() =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
         {
             RecomputeMa();
             UpdatePhasePlot();
         });
+    }
+
+    private void AppendMovingAverage()
+    {
+        var w = Math.Max(1, _viewModel.MaWindow);
+        var count = _phasePs.Count;
+        var span = Math.Min(count, w);
+        var start = count - span;
+        double sum = 0;
+        for (var i = start; i < count; i++)
+        {
+            sum += _phasePs[i];
+        }
+
+        _phaseMa.Add(sum / span);
     }
 
     private void RecomputeMa()
@@ -142,31 +206,33 @@ public partial class DmtdView : UserControl
     private void UpdatePhasePlot()
     {
         PhasePlot.Plot.Clear();
-        if (_phaseTimes.Count > 0)
+        if (_phaseTimes.Count == 0)
         {
-            _phaseSignal = PhasePlot.Plot.Add.SignalXY(_phaseTimes.ToArray(), _phasePs.ToArray());
-            StyleSignal(_phaseSignal);
-            _phaseSignal.LegendText = "Δt (ps)";
-
-            if (_phaseMa.Count == _phaseTimes.Count)
-            {
-                _maSignal = PhasePlot.Plot.Add.SignalXY(_phaseTimes.ToArray(), _phaseMa.ToArray());
-                _maSignal.Color = PlotThemeHelper.GetSecondarySignalColor();
-                _maSignal.LineWidth = 1.5f;
-                _maSignal.LegendText = $"Moving average ({_viewModel.MaWindow})";
-            }
-
-            PlotThemeHelper.ApplyLegend(PhasePlot.Plot);
-
-            var (yMin, yMax) = PlotScaleHelper.RangeWithPadding(_phasePs.ToArray());
-            PhasePlot.Plot.Axes.SetLimitsX(_phaseTimes[0], _phaseTimes[^1]);
-            PhasePlot.Plot.Axes.SetLimitsY(yMin, yMax);
+            PhasePlot.Refresh();
+            return;
         }
 
+        var phaseSignal = PhasePlot.Plot.Add.SignalXY(_phaseTimes.ToArray(), _phasePs.ToArray());
+        StyleSignal(phaseSignal);
+        phaseSignal.LegendText = "Δt (ps)";
+
+        if (_phaseMa.Count == _phaseTimes.Count)
+        {
+            var maSignal = PhasePlot.Plot.Add.SignalXY(_phaseTimes.ToArray(), _phaseMa.ToArray());
+            maSignal.Color = PlotThemeHelper.GetSecondarySignalColor();
+            maSignal.LineWidth = 1.5f;
+            maSignal.LegendText = $"Moving average ({_viewModel.MaWindow})";
+        }
+
+        PlotThemeHelper.ApplyLegend(PhasePlot.Plot);
+
+        var (yMin, yMax) = PlotScaleHelper.RangeWithPadding(_phasePs.ToArray());
+        PhasePlot.Plot.Axes.SetLimitsX(_phaseTimes[0], _phaseTimes[^1]);
+        PhasePlot.Plot.Axes.SetLimitsY(yMin, yMax);
         PhasePlot.Refresh();
     }
 
-    private void UpdateChannelPlot(LivePoint point)
+    private void UpdateChannelPlot()
     {
         var (left, right) = _viewModel.CaptureService.Snapshot.CopyLatest(1024);
         if (left.Length == 0)
@@ -174,7 +240,13 @@ public partial class DmtdView : UserControl
             return;
         }
 
-        var xs = Enumerable.Range(0, left.Length).Select(i => i / (double)_viewModel.CaptureService.SampleRate).ToArray();
+        var sampleRate = _viewModel.CaptureService.SampleRate;
+        var xs = new double[left.Length];
+        for (var i = 0; i < left.Length; i++)
+        {
+            xs[i] = i / (double)sampleRate;
+        }
+
         ChannelPlot.Plot.Clear();
         var sigA = ChannelPlot.Plot.Add.SignalXY(xs, left.Select(v => (double)v).ToArray());
         StyleSignal(sigA);
@@ -183,24 +255,6 @@ public partial class DmtdView : UserControl
         sigB.LineWidth = 2;
         ChannelPlot.Plot.Axes.SetLimitsX(xs[0], xs[^1]);
         ChannelPlot.Refresh();
-    }
-
-    private void UpdateSnapshotPlot()
-    {
-        if (!_viewModel.IsCapturing)
-        {
-            return;
-        }
-
-        var (left, right) = _viewModel.CaptureService.Snapshot.CopyLatest(Dmtd.Module.Services.DmtdCaptureService.SnapshotFrames);
-        var xs = Enumerable.Range(0, left.Length).Select(i => (double)i).ToArray();
-        SnapshotPlot.Plot.Clear();
-        var sigA = SnapshotPlot.Plot.Add.SignalXY(xs, left.Select(v => (double)v).ToArray());
-        StyleSignal(sigA);
-        var sigB = SnapshotPlot.Plot.Add.SignalXY(xs, right.Select(v => (double)v).ToArray());
-        sigB.Color = PlotThemeHelper.GetSecondarySignalColor();
-        sigB.LineWidth = 1.5f;
-        SnapshotPlot.Refresh();
     }
 
     private static void StyleSignal(SignalXY signal)
