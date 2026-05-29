@@ -22,6 +22,7 @@
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="PhaseLab" FontSize="16" FontWeight="SemiBold"
                                Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="VersionTextBlock" Style="{StaticResource LabelTextBlock}" Margin="8,2,0,0"/>
                     <TextBlock Text="Mode:" Style="{StaticResource LabelTextBlock}" Margin="20,0,8,0"/>
                     <ComboBox x:Name="ModeComboBox" Style="{StaticResource ModeToolbarComboBox}"
                               SelectionChanged="ModeComboBox_SelectionChanged"/>

@@ -27,9 +27,9 @@ public static class UpdateService
             }
 
             var version = update.TargetFullRelease.Version.ToString();
-            var prompt = Application.Current?.MainWindow;
+            var owner = Application.Current?.MainWindow;
             var result = MessageBox.Show(
-                prompt,
+                owner,
                 $"A new version of PhaseLab is available ({version}).\n\nDownload and install now? The app will restart.",
                 "Update available",
                 MessageBoxButton.YesNo,
@@ -40,8 +40,23 @@ public static class UpdateService
                 return;
             }
 
-            await updateManager.DownloadUpdatesAsync(update);
-            updateManager.ApplyUpdatesAndRestart(update);
+            var progressWindow = new UpdateProgressWindow(owner);
+            progressWindow.Show();
+
+            try
+            {
+                await updateManager.DownloadUpdatesAsync(update, progress =>
+                {
+                    progressWindow.Dispatcher.Invoke(() => progressWindow.SetProgress(progress));
+                });
+
+                progressWindow.SetInstalling();
+                updateManager.ApplyUpdatesAndRestart(update);
+            }
+            finally
+            {
+                progressWindow.Close();
+            }
         }
         catch
         {

@@ -15,6 +15,7 @@ public partial class MainWindow : Window
     public MainWindow(IReadOnlyList<IMeasurementModule> modules, ShellSettings settings)
     {
         InitializeComponent();
+        VersionTextBlock.Text = $"v{AppVersion.Current}";
 
         _modules = modules;
         _settings = settings;
