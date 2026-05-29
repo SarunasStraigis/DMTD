@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - v*
+
+permissions:
+  contents: write
+
+env:
+  VELOPACK_VERSION: 0.0.1298
+  PACK_ID: PhaseLab
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Parse version from tag
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish application
+        run: |
+          dotnet publish PhaseLab.Shell/PhaseLab.Shell.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:Version=${{ steps.version.outputs.version }} `
+            -o publish
+
+      - name: Install Velopack CLI
+        run: dotnet tool install -g vpk --version ${{ env.VELOPACK_VERSION }}
+
+      - name: Download previous release
+        continue-on-error: true
+        run: vpk download github --repoUrl https://github.com/${{ github.repository }}
+
+      - name: Pack Velopack release
+        run: |
+          vpk pack `
+            --packId ${{ env.PACK_ID }} `
+            --packVersion ${{ steps.version.outputs.version }} `
+            --packDir publish `
+            --mainExe PhaseLab.exe
+
+      - name: Upload GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          vpk upload github `
+            --repoUrl https://github.com/${{ github.repository }} `
+            --publish `
+            --releaseName "PhaseLab ${{ steps.version.outputs.version }}" `
+            --tag v${{ steps.version.outputs.version }}

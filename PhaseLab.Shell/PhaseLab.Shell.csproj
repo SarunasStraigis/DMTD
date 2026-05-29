@@ -11,6 +11,7 @@
     <ApplicationTitle>PhaseLab</ApplicationTitle>
     <Version>1.0.0</Version>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <StartupObject>PhaseLab.Shell.Program</StartupObject>
   </PropertyGroup>
 
   <ItemGroup>
@@ -23,6 +24,10 @@
     <ProjectReference Include="..\PhaseLab.Api.Host\PhaseLab.Api.Host.csproj" />
     <ProjectReference Include="..\Dmtd.Module\Dmtd.Module.csproj" />
     <ProjectReference Include="..\JitterMeasurement.Module\JitterMeasurement.Module.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Velopack" Version="0.0.1298" />
   </ItemGroup>
 
 </Project>

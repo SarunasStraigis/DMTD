@@ -41,7 +41,15 @@ The software layer captures the continuous audio stream and extracts the phase d
 
 **PhaseLab** is the unified Windows desktop application for DMTD phase analysis and jitter measurement. Use the toolbar to switch modes; the last selected mode is remembered in `%AppData%\PhaseLab\settings.json`.
 
-### Prerequisites
+### Install (end users)
+
+Download **`PhaseLab-win-Setup.exe`** from [GitHub Releases](https://github.com/SarunasStraigis/DMTD/releases). No .NET SDK is required — the installer is self-contained.
+
+Windows SmartScreen may warn because the installer is not code-signed yet. Choose **More info → Run anyway** to proceed.
+
+Installed apps check GitHub Releases for updates on startup and prompt before downloading.
+
+### Prerequisites (development)
 - Windows 10/11 x64
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
 
@@ -59,6 +67,25 @@ dotnet run --project PhaseLab.Shell/PhaseLab.Shell.csproj
 
 Output: `dist/PhaseLab.exe`
 
+### Release installer (maintainers)
+
+Tag a version to build and publish a Velopack installer via GitHub Actions:
+
+```powershell
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+The release workflow publishes `PhaseLab-win-Setup.exe` and update metadata to GitHub Releases.
+
+To test packaging locally before tagging:
+
+```powershell
+./scripts/release-pack.ps1 -Version 1.0.1
+```
+
+Output: `dist/releases/` (Setup.exe and Velopack update assets).
+
 ### REST API
 
 While PhaseLab is running, a localhost REST API is available for scripting and automation:
@@ -69,97 +96,23 @@ While PhaseLab is running, a localhost REST API is available for scripting and a
 
 Configure port and enable/disable in `%AppData%\PhaseLab\settings.json` (`apiEnabled`, `apiPort`).
 
-### Legacy Python/React stack
-
-The `python desktop.py` launcher and `backend/` + `frontend/` stack remain in the repo for reference but are **deprecated** in favor of PhaseLab.
-
----
-
-## Software Setup (Legacy Python/React)
-
-### Prerequisites
-- Python 3.11+
-- Node.js 18+
-
-### Backend
-
-```bash
-cd backend
-pip install -r requirements.txt
-```
-
-### Frontend
-
-```bash
-cd frontend
-npm install
-npm run build          # build for production (served by FastAPI)
-# OR
-npm run dev            # dev server with hot reload at http://localhost:5173
-```
-
-### Run (Desktop App — deprecated)
-
-```bash
-# From the repo root:
-python desktop.py
-```
-
-Starts the FastAPI server on `http://localhost:8123` and opens a native desktop window. Prefer **PhaseLab** above.
-
-### Run (Server / Headless)
-
-```bash
-cd backend
-uvicorn main:app --host 0.0.0.0 --port 8000
-```
-
-Access the web UI at `http://localhost:8000` from any browser.  
-Interactive API docs: `http://localhost:8000/docs`
-
----
-
-## REST API (PhaseLab)
-
-PhaseLab includes an embedded localhost API. See [docs/API.md](docs/API.md) for endpoints, snapshot fields, and curl examples. Interactive OpenAPI docs: `http://127.0.0.1:8787/docs`.
-
-## Legacy REST API (deprecated Python stack)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/config` | Read configuration |
-| PUT | `/api/config` | Update & persist configuration |
-| GET | `/api/devices` | List audio input devices |
-| GET | `/api/status` | Running state, sample rate, WS clients |
-| POST | `/api/control/start` | Start audio capture & DSP |
-| POST | `/api/control/stop` | Stop capture |
-| GET | `/api/history` | Query phase history (SQLite) |
-| WS | `/ws/live` | Real-time phase data stream |
-
 ---
 
 ## Project Structure
 
 ```
 DMTD/
-├── backend/
-│   ├── main.py              # FastAPI app
-│   ├── audio_capture.py     # sounddevice capture + DSP dispatch
-│   ├── dsp.py               # IQ demod, unwrap, DMTD scaling
-│   ├── config.py            # Pydantic config, load/save JSON
-│   ├── history.py           # aiosqlite phase log
-│   └── ws_manager.py        # WebSocket broadcast manager
-├── frontend/
-│   ├── src/
-│   │   ├── App.tsx           # Main layout, tab nav, start/stop
-│   │   ├── components/
-│   │   │   ├── PhaseChart.tsx    # uPlot real-time chart
-│   │   │   ├── AllanChart.tsx    # OADEV chart (recharts)
-│   │   │   └── ConfigPanel.tsx   # Settings form
-│   │   └── api/client.ts         # REST + WebSocket helpers
-│   └── package.json
-├── desktop.py               # pywebview desktop launcher
-├── config.json              # Persisted settings (auto-created)
-├── history.db               # SQLite phase log (auto-created)
-└── README.md
+├── PhaseLab.Shell/              # WPF app entry point
+├── PhaseLab.UI/                 # Shared shell UI and themes
+├── PhaseLab.Api/                # REST API contracts
+├── PhaseLab.Api.Host/           # Embedded Kestrel host
+├── Dmtd.Core/                   # DMTD DSP library
+├── Dmtd.Module/                 # DMTD measurement module
+├── JitterMeasurement.Core/      # Jitter analysis library
+├── JitterMeasurement.Module/    # Jitter measurement module
+├── Dmtd.Core.Tests/             # Unit and golden-vector tests
+├── docs/API.md                  # REST API reference
+├── scripts/release-pack.ps1     # Local Velopack packaging
+├── publish.ps1                  # Dev single-file publish
+└── .github/workflows/           # CI and release automation
 ```

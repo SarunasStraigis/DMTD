@@ -161,7 +161,3 @@ Failed preconditions return **409** with a JSON body: `{"detail": "..."}`.
 ## Extending for new modules
 
 Future PhaseLab modules implement `IMeasurementApiModule` (in `PhaseLab.Api`) and expose it via `IMeasurementModule.Api`. The host registers all non-null API modules automatically — no route changes required in the shell.
-
-## Legacy Python API
-
-The deprecated `backend/` FastAPI stack remains in the repo for reference. PhaseLab uses the embedded API described here instead.

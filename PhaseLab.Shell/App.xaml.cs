@@ -5,6 +5,7 @@ using PhaseLab.Api.Host;
 using PhaseLab.Shell.Services;
 using PhaseLab.UI;
 using System.Windows;
+using System.Windows.Threading;
 
 namespace PhaseLab.Shell;
 
@@ -28,6 +29,13 @@ public partial class App : Application
 
         MainWindow = new MainWindow(_modules, settings);
         MainWindow.Show();
+
+        _ = Dispatcher.InvokeAsync(CheckForUpdatesDeferred, DispatcherPriority.ApplicationIdle);
+    }
+
+    private static async void CheckForUpdatesDeferred()
+    {
+        await UpdateService.CheckForUpdatesAsync();
     }
 
     private async void OnExit(object sender, ExitEventArgs e)

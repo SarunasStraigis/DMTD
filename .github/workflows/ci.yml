@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore PhaseLab.slnx
+
+      - name: Build
+        run: dotnet build PhaseLab.slnx -c Release --no-restore
+
+      - name: Test
+        run: dotnet test Dmtd.Core.Tests/Dmtd.Core.Tests.csproj -c Release --no-build --verbosity normal
