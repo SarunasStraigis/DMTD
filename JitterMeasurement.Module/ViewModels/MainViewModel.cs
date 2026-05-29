@@ -365,12 +365,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             _capture.Start(SelectedDevice.Id, SelectedSampleRate, SelectedInputChannel - 1);
             _uiTimer.Start();
             IsCapturing = true;
-
-            var rateNote = _capture.SampleRate == SelectedSampleRate
-                ? $"{_capture.SampleRate} Hz"
-                : $"{_capture.SampleRate} Hz (requested {SelectedSampleRate} Hz)";
-
-            StatusText = $"Capturing {SelectedDevice.Name} — input {SelectedInputChannel} at {rateNote}";
+            StatusText = "Capturing";
         }
         catch (Exception ex)
         {
@@ -383,7 +378,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _uiTimer.Stop();
         _capture.Stop();
         IsCapturing = false;
-        StatusText = "Stopped";
+        StatusText = string.Empty;
     }
 
     private void CalibrateNow()

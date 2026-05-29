@@ -9,7 +9,6 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
@@ -42,6 +41,8 @@
                             </Style>
                         </Button.Style>
                     </Button>
+                    <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" Margin="12,0,0,0"
+                               Foreground="{DynamicResource TextSecondaryBrush}"/>
                 </StackPanel>
             </StackPanel>
         </Border>
@@ -126,10 +127,6 @@
                     </TextBlock.Style>
                 </TextBlock>
             </StackPanel>
-        </Border>
-
-        <Border Grid.Row="3" Grid.ColumnSpan="2" Style="{StaticResource CardBorder}" Padding="10,8" Margin="0,8,0,0">
-            <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource TextSecondaryBrush}"/>
         </Border>
     </Grid>
 </UserControl>

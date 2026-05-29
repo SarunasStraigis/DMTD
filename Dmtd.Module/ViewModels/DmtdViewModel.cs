@@ -40,6 +40,9 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
     private string _stdMetricValue = "—";
     private string _stdMetricUnit = "ps";
     private string _detailMetrics = "Start capture to begin live phase measurement.";
+    private string _channelBeatFrequencyDisplay = "—";
+    private string _channelRmsDisplay = "—";
+    private string _channelPhaseAbDisplay = "—";
     private bool _showSlipWarning;
     private string _slipWarningText = string.Empty;
     private DateTimeOffset? _sessionSince;
@@ -477,6 +480,24 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
         private set => SetField(ref _detailMetrics, value);
     }
 
+    public string ChannelBeatFrequencyDisplay
+    {
+        get => _channelBeatFrequencyDisplay;
+        private set => SetField(ref _channelBeatFrequencyDisplay, value);
+    }
+
+    public string ChannelRmsDisplay
+    {
+        get => _channelRmsDisplay;
+        private set => SetField(ref _channelRmsDisplay, value);
+    }
+
+    public string ChannelPhaseAbDisplay
+    {
+        get => _channelPhaseAbDisplay;
+        private set => SetField(ref _channelPhaseAbDisplay, value);
+    }
+
     public bool ShowSlipWarning
     {
         get => _showSlipWarning;
@@ -656,7 +677,7 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
 
             _capture.Start(_settings, history);
             IsCapturing = true;
-            StatusText = $"Capturing at {_capture.SampleRate} Hz";
+            StatusText = "Capturing";
             StartMetricsTimer();
             UpdateMetricDisplay();
             RefreshExportableRowCount();
@@ -672,7 +693,7 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
         _capture.Stop();
         IsCapturing = false;
         StopMetricsTimer();
-        StatusText = "Stopped";
+        StatusText = string.Empty;
         UpdateMetricDisplay();
         RefreshExportableRowCount();
         PersistSettings();
@@ -878,6 +899,9 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
             DetailMetrics = IsCapturing
                 ? "Waiting for phase data..."
                 : "Start capture to begin live phase measurement.";
+            ChannelBeatFrequencyDisplay = "—";
+            ChannelRmsDisplay = "—";
+            ChannelPhaseAbDisplay = "—";
             return;
         }
 
@@ -904,10 +928,11 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
         var detail = new StringBuilder();
         detail.AppendLine($"Beat-note phase: {diffDeg:F2}°");
         detail.AppendLine($"Window: {_maWindow} samples ({Math.Min(_maWindow, phaseHistorySnapshot.Count)} effective)");
-        detail.AppendLine();
-        detail.AppendLine($"Beat frequency: {latest.BeatFreq:F2} Hz");
-        detail.AppendLine($"RMS A / B: {latest.RmsA:F3} / {latest.RmsB:F3}");
-        detail.AppendLine($"Phase A / B: {PhaseMetricFormatter.FormatCompact(latest.PhaseAPs)} / {PhaseMetricFormatter.FormatCompact(latest.PhaseBPs)}");
+
+        ChannelBeatFrequencyDisplay = $"{latest.BeatFreq:F2} Hz";
+        ChannelRmsDisplay = $"{latest.RmsA:F3} / {latest.RmsB:F3}";
+        ChannelPhaseAbDisplay =
+            $"{PhaseMetricFormatter.FormatCompact(latest.PhaseAPs)} / {PhaseMetricFormatter.FormatCompact(latest.PhaseBPs)}";
 
         if (stats is PhaseStats phaseStats)
         {

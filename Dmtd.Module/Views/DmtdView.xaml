@@ -11,7 +11,6 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <Border Grid.Row="0" Style="{StaticResource CardBorder}" Margin="0,0,0,8">
@@ -39,6 +38,8 @@
                         </Style>
                     </Button.Style>
                 </Button>
+                <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" Margin="12,0,0,0"
+                           Foreground="{DynamicResource TextSecondaryBrush}"/>
             </StackPanel>
         </Border>
 
@@ -153,8 +154,18 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
-                    <CheckBox Grid.Row="0" Content="Live" IsChecked="{Binding ChannelsLiveEnabled}"
-                              VerticalAlignment="Center" Margin="0,0,0,8"/>
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+                        <CheckBox Content="Live" IsChecked="{Binding ChannelsLiveEnabled}" VerticalAlignment="Center"/>
+                        <TextBlock Text="Beat:" Style="{StaticResource LabelTextBlock}" Margin="16,0,0,0"/>
+                        <TextBlock Text="{Binding ChannelBeatFrequencyDisplay}" FontFamily="Consolas" FontSize="12"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                        <TextBlock Text="RMS A/B:" Style="{StaticResource LabelTextBlock}" Margin="16,0,0,0"/>
+                        <TextBlock Text="{Binding ChannelRmsDisplay}" FontFamily="Consolas" FontSize="12"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                        <TextBlock Text="Phase A/B:" Style="{StaticResource LabelTextBlock}" Margin="16,0,0,0"/>
+                        <TextBlock Text="{Binding ChannelPhaseAbDisplay}" FontFamily="Consolas" FontSize="12"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                    </StackPanel>
                     <Border Grid.Row="1" Style="{StaticResource CardBorder}">
                         <ScottPlot:WpfPlot x:Name="ChannelPlot"/>
                     </Border>
@@ -274,9 +285,5 @@
                 </ScrollViewer>
             </TabItem>
         </TabControl>
-
-        <Border Grid.Row="2" Style="{StaticResource CardBorder}" Margin="0,8,0,0" Padding="10,8">
-            <TextBlock Text="{Binding StatusText}" Foreground="{DynamicResource TextSecondaryBrush}"/>
-        </Border>
     </Grid>
 </UserControl>

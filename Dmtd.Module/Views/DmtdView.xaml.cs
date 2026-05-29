@@ -253,7 +253,17 @@ public partial class DmtdView : UserControl
         var sigB = ChannelPlot.Plot.Add.SignalXY(xs, right.Select(v => (double)v).ToArray());
         sigB.Color = PlotThemeHelper.GetSecondarySignalColor();
         sigB.LineWidth = 2;
+
+        var combined = new double[left.Length + right.Length];
+        for (var i = 0; i < left.Length; i++)
+        {
+            combined[i] = left[i];
+            combined[left.Length + i] = right[i];
+        }
+
+        var (yMin, yMax) = PlotScaleHelper.RangeWithPadding(combined);
         ChannelPlot.Plot.Axes.SetLimitsX(xs[0], xs[^1]);
+        ChannelPlot.Plot.Axes.SetLimitsY(yMin, yMax);
         ChannelPlot.Refresh();
     }
 
