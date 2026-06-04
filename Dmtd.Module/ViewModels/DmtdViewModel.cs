@@ -29,7 +29,6 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
     private string _statusText = "Ready";
     private LivePoint? _latestPoint;
     private int _maWindow = 30;
-    private bool _channelsLiveEnabled;
     private string _primaryMetricTitle = "Phase Δt";
     private string _primaryMetricValue = "—";
     private string _primaryMetricUnit = "ps";
@@ -466,12 +465,6 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
         PhaseZeroActive
             ? PhaseMetricFormatter.FormatCompact(_settings.PhaseZeroOffsetPs)
             : "Not set";
-
-    public bool ChannelsLiveEnabled
-    {
-        get => _channelsLiveEnabled;
-        set => SetField(ref _channelsLiveEnabled, value);
-    }
 
     public DmtdCaptureService CaptureService => _capture;
 

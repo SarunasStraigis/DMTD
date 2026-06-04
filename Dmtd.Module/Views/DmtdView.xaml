@@ -6,6 +6,11 @@
              FontFamily="Segoe UI">
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <Style x:Key="CompactSecondaryButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+            <Setter Property="Padding" Value="6,3"/>
+            <Setter Property="MinHeight" Value="24"/>
+            <Setter Property="Margin" Value="0,0,4,4"/>
+        </Style>
     </UserControl.Resources>
     <Grid Margin="12">
         <Grid.RowDefinitions>
@@ -43,36 +48,60 @@
             </StackPanel>
         </Border>
 
-        <TabControl Grid.Row="1" Background="Transparent" BorderThickness="0">
-            <TabItem Header="Live Phase">
-                <Grid Margin="0,8,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="300"/>
-                    </Grid.ColumnDefinitions>
+        <Grid Grid.Row="1" Margin="0,8,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="300"/>
+            </Grid.ColumnDefinitions>
 
-                    <Border Grid.Column="0" Style="{StaticResource CardBorder}" Margin="0,0,8,0" Padding="12,12,12,8">
-                        <ScottPlot:WpfPlot x:Name="PhasePlot"/>
-                    </Border>
+            <Grid Grid.Column="0" Margin="0,0,8,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="160"/>
+                </Grid.RowDefinitions>
 
-                    <Border Grid.Column="1" Style="{StaticResource CardBorder}" Padding="20,24">
+                <Border Grid.Row="0" Style="{StaticResource CardBorder}" Margin="0,0,0,8" Padding="12,12,12,8">
+                    <ScottPlot:WpfPlot x:Name="PhasePlot"/>
+                </Border>
+
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
+                    <TextBlock Text="Beat:" Style="{StaticResource LabelTextBlock}"/>
+                    <TextBlock Text="{Binding ChannelBeatFrequencyDisplay}" FontFamily="Consolas" FontSize="12"
+                               Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                    <TextBlock Text="RMS A/B:" Style="{StaticResource LabelTextBlock}" Margin="16,0,0,0"/>
+                    <TextBlock Text="{Binding ChannelRmsDisplay}" FontFamily="Consolas" FontSize="12"
+                               Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                    <TextBlock Text="Phase A/B:" Style="{StaticResource LabelTextBlock}" Margin="16,0,0,0"/>
+                    <TextBlock Text="{Binding ChannelPhaseAbDisplay}" FontFamily="Consolas" FontSize="12"
+                               Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <Border Grid.Row="2" Style="{StaticResource CardBorder}" Padding="12,8">
+                    <ScottPlot:WpfPlot x:Name="ChannelPlot"/>
+                </Border>
+            </Grid>
+
+            <TabControl Grid.Column="1" Style="{StaticResource SidePanelTabControl}">
+                <TabItem Header="Session">
+                    <Border Style="{StaticResource CardBorder}" Padding="16,16">
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <StackPanel VerticalAlignment="Top">
-                                <TextBlock Text="Session" FontSize="13" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,8"/>
-                                <Button Content="Reset" Command="{Binding ResetPhaseCommand}"
-                                        Style="{StaticResource SecondaryButton}" Margin="0,0,0,6"/>
-                                <Button Content="Download CSV" Command="{Binding DownloadHistoryCommand}"
-                                        Style="{StaticResource SecondaryButton}" Margin="0,0,0,6"
-                                        Visibility="{Binding ShowDownloadCsv, Converter={StaticResource BoolToVisibilityConverter}}">
-                                    <Button.ToolTip>
-                                        <TextBlock Text="{Binding DownloadCsvToolTip}" TextWrapping="Wrap" MaxWidth="280"/>
-                                    </Button.ToolTip>
-                                </Button>
-                                <Button Content="Set Zero" Command="{Binding SetZeroCommand}"
-                                        Style="{StaticResource SecondaryButton}" Margin="0,0,0,6"/>
-                                <Button Content="Clear Zero" Command="{Binding ClearZeroCommand}"
-                                        Style="{StaticResource SecondaryButton}" Margin="0,0,0,12"/>
+                                <UniformGrid Columns="2" Rows="2" Margin="0,0,0,12">
+                                    <Button Content="Reset" Command="{Binding ResetPhaseCommand}"
+                                            Style="{StaticResource CompactSecondaryButton}"/>
+                                    <Button Content="Download CSV" Command="{Binding DownloadHistoryCommand}"
+                                            Style="{StaticResource CompactSecondaryButton}"
+                                            Visibility="{Binding ShowDownloadCsv, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <Button.ToolTip>
+                                            <TextBlock Text="{Binding DownloadCsvToolTip}" TextWrapping="Wrap" MaxWidth="280"/>
+                                        </Button.ToolTip>
+                                    </Button>
+                                    <Button Content="Set Zero" Command="{Binding SetZeroCommand}"
+                                            Style="{StaticResource CompactSecondaryButton}"/>
+                                    <Button Content="Clear Zero" Command="{Binding ClearZeroCommand}"
+                                            Style="{StaticResource CompactSecondaryButton}"/>
+                                </UniformGrid>
 
                                 <Grid Margin="0,0,0,20">
                                     <Grid.ColumnDefinitions>
@@ -145,107 +174,83 @@
                             </StackPanel>
                         </ScrollViewer>
                     </Border>
-                </Grid>
-            </TabItem>
+                </TabItem>
 
-            <TabItem Header="Channels">
-                <Grid Margin="0,8,0,0">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
-                        <CheckBox Content="Live" IsChecked="{Binding ChannelsLiveEnabled}" VerticalAlignment="Center"/>
-                        <TextBlock Text="Beat:" Style="{StaticResource LabelTextBlock}" Margin="16,0,0,0"/>
-                        <TextBlock Text="{Binding ChannelBeatFrequencyDisplay}" FontFamily="Consolas" FontSize="12"
-                                   Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
-                        <TextBlock Text="RMS A/B:" Style="{StaticResource LabelTextBlock}" Margin="16,0,0,0"/>
-                        <TextBlock Text="{Binding ChannelRmsDisplay}" FontFamily="Consolas" FontSize="12"
-                                   Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
-                        <TextBlock Text="Phase A/B:" Style="{StaticResource LabelTextBlock}" Margin="16,0,0,0"/>
-                        <TextBlock Text="{Binding ChannelPhaseAbDisplay}" FontFamily="Consolas" FontSize="12"
-                                   Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center"/>
-                    </StackPanel>
-                    <Border Grid.Row="1" Style="{StaticResource CardBorder}">
-                        <ScottPlot:WpfPlot x:Name="ChannelPlot"/>
-                    </Border>
-                </Grid>
-            </TabItem>
-
-            <TabItem Header="Configuration">
-                <ScrollViewer Margin="0,8,0,0" VerticalScrollBarVisibility="Auto">
-                    <Border Style="{StaticResource CardBorder}">
-                        <StackPanel MaxWidth="900">
-                            <TextBlock Text="Analyser Configuration" Style="{StaticResource SectionHeaderText}"/>
-                            <UniformGrid Columns="2" Margin="0,0,0,8">
-                                <StackPanel Margin="0,0,8,8">
-                                    <TextBlock Text="Beat frequency (Hz)" Style="{StaticResource LabelTextBlock}"/>
-                                    <TextBox Style="{StaticResource StyledTextBox}"
-                                             Text="{Binding BeatFrequency, UpdateSourceTrigger=PropertyChanged}"/>
-                                </StackPanel>
-                                <StackPanel Margin="8,0,0,8">
-                                    <TextBlock Text="Ref frequency (MHz)" Style="{StaticResource LabelTextBlock}"/>
-                                    <TextBox Style="{StaticResource StyledTextBox}"
-                                             Text="{Binding RefFrequencyMhz, UpdateSourceTrigger=PropertyChanged}"/>
-                                </StackPanel>
-                                <StackPanel Margin="0,0,8,8">
-                                    <TextBlock Text="Block duration (ms)" Style="{StaticResource LabelTextBlock}"/>
-                                    <TextBox Style="{StaticResource StyledTextBox}"
-                                             Text="{Binding BlockDurationMsText, UpdateSourceTrigger=LostFocus}"/>
-                                    <TextBlock Text="{Binding BlockSizeDisplay}" FontSize="11"
-                                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/>
-                                </StackPanel>
-                                <StackPanel Margin="8,0,0,8">
-                                    <TextBlock Text="Expansion factor (computed)" Style="{StaticResource LabelTextBlock}"/>
-                                    <TextBox Style="{StaticResource StyledTextBox}"
-                                             Text="{Binding ExpansionFactorDisplay, Mode=OneWay}"
-                                             IsReadOnly="True"
-                                             Background="{DynamicResource SurfaceBrush}"/>
-                                </StackPanel>
-                                <StackPanel Margin="0,0,8,8">
-                                    <TextBlock Text="Frequency estimator" Style="{StaticResource LabelTextBlock}"/>
-                                    <ComboBox Style="{StaticResource StyledComboBox}"
-                                              ItemsSource="{Binding FreqEstimatorOptions}"
-                                              SelectedItem="{Binding SelectedFreqEstimator}"
-                                              DisplayMemberPath="Label"/>
-                                </StackPanel>
-                                <StackPanel Margin="8,0,0,8"
-                                            Visibility="{Binding ShowFreqSource, Converter={StaticResource BoolToVisibilityConverter}}">
-                                    <TextBlock Text="Frequency source" Style="{StaticResource LabelTextBlock}"/>
-                                    <ComboBox Style="{StaticResource StyledComboBox}"
-                                              ItemsSource="{Binding FreqSourceOptions}"
-                                              SelectedItem="{Binding SelectedFreqSource}"
-                                              DisplayMemberPath="Label"/>
-                                </StackPanel>
-                                <StackPanel Margin="8,0,0,8">
-                                    <TextBlock Text="IQ integration window" Style="{StaticResource LabelTextBlock}"/>
-                                    <ComboBox Style="{StaticResource StyledComboBox}"
-                                              ItemsSource="{Binding IqWindowOptions}"
-                                              SelectedItem="{Binding SelectedIqWindow}"
-                                              DisplayMemberPath="Label"/>
-                                </StackPanel>
-                                <StackPanel Margin="0,0,8,8">
-                                    <TextBlock Text="IQ min magnitude" Style="{StaticResource LabelTextBlock}"/>
-                                    <TextBox Style="{StaticResource StyledTextBox}"
-                                             Text="{Binding IqMinMag, UpdateSourceTrigger=PropertyChanged}"/>
-                                </StackPanel>
-                                <StackPanel Margin="0,0,8,8">
-                                    <TextBlock Text="History retention (days)" Style="{StaticResource LabelTextBlock}"/>
-                                    <TextBox Style="{StaticResource StyledTextBox}"
-                                             Text="{Binding HistoryRetentionDays, UpdateSourceTrigger=PropertyChanged}"/>
-                                </StackPanel>
-                                <StackPanel Margin="8,0,0,8" VerticalAlignment="Bottom">
-                                    <CheckBox Content="Log phase history to disk"
-                                              IsChecked="{Binding EnableHistoryLogging}"
-                                              ToolTip="When enabled, each processed block is appended to history.db for CSV export."/>
-                                </StackPanel>
-                            </UniformGrid>
-                            <Button Content="Save Configuration" Command="{Binding SaveConfigCommand}"
-                                    Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left"/>
-                        </StackPanel>
-                    </Border>
-                </ScrollViewer>
-            </TabItem>
-        </TabControl>
+                <TabItem Header="Configuration">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <Border Style="{StaticResource CardBorder}" Padding="16,16">
+                            <StackPanel>
+                                <TextBlock Text="Analyser Configuration" Style="{StaticResource SectionHeaderText}"/>
+                                <UniformGrid Columns="1" Margin="0,0,0,8">
+                                    <StackPanel Margin="0,0,0,8">
+                                        <TextBlock Text="Beat frequency (Hz)" Style="{StaticResource LabelTextBlock}"/>
+                                        <TextBox Style="{StaticResource StyledTextBox}"
+                                                 Text="{Binding BeatFrequency, UpdateSourceTrigger=PropertyChanged}"/>
+                                    </StackPanel>
+                                    <StackPanel Margin="0,0,0,8">
+                                        <TextBlock Text="Ref frequency (MHz)" Style="{StaticResource LabelTextBlock}"/>
+                                        <TextBox Style="{StaticResource StyledTextBox}"
+                                                 Text="{Binding RefFrequencyMhz, UpdateSourceTrigger=PropertyChanged}"/>
+                                    </StackPanel>
+                                    <StackPanel Margin="0,0,0,8">
+                                        <TextBlock Text="Block duration (ms)" Style="{StaticResource LabelTextBlock}"/>
+                                        <TextBox Style="{StaticResource StyledTextBox}"
+                                                 Text="{Binding BlockDurationMsText, UpdateSourceTrigger=LostFocus}"/>
+                                        <TextBlock Text="{Binding BlockSizeDisplay}" FontSize="11"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                    <StackPanel Margin="0,0,0,8">
+                                        <TextBlock Text="Expansion factor (computed)" Style="{StaticResource LabelTextBlock}"/>
+                                        <TextBox Style="{StaticResource StyledTextBox}"
+                                                 Text="{Binding ExpansionFactorDisplay, Mode=OneWay}"
+                                                 IsReadOnly="True"
+                                                 Background="{DynamicResource SurfaceBrush}"/>
+                                    </StackPanel>
+                                    <StackPanel Margin="0,0,0,8">
+                                        <TextBlock Text="Frequency estimator" Style="{StaticResource LabelTextBlock}"/>
+                                        <ComboBox Style="{StaticResource StyledComboBox}"
+                                                  ItemsSource="{Binding FreqEstimatorOptions}"
+                                                  SelectedItem="{Binding SelectedFreqEstimator}"
+                                                  DisplayMemberPath="Label"/>
+                                    </StackPanel>
+                                    <StackPanel Margin="0,0,0,8"
+                                                Visibility="{Binding ShowFreqSource, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <TextBlock Text="Frequency source" Style="{StaticResource LabelTextBlock}"/>
+                                        <ComboBox Style="{StaticResource StyledComboBox}"
+                                                  ItemsSource="{Binding FreqSourceOptions}"
+                                                  SelectedItem="{Binding SelectedFreqSource}"
+                                                  DisplayMemberPath="Label"/>
+                                    </StackPanel>
+                                    <StackPanel Margin="0,0,0,8">
+                                        <TextBlock Text="IQ integration window" Style="{StaticResource LabelTextBlock}"/>
+                                        <ComboBox Style="{StaticResource StyledComboBox}"
+                                                  ItemsSource="{Binding IqWindowOptions}"
+                                                  SelectedItem="{Binding SelectedIqWindow}"
+                                                  DisplayMemberPath="Label"/>
+                                    </StackPanel>
+                                    <StackPanel Margin="0,0,0,8">
+                                        <TextBlock Text="IQ min magnitude" Style="{StaticResource LabelTextBlock}"/>
+                                        <TextBox Style="{StaticResource StyledTextBox}"
+                                                 Text="{Binding IqMinMag, UpdateSourceTrigger=PropertyChanged}"/>
+                                    </StackPanel>
+                                    <StackPanel Margin="0,0,0,8">
+                                        <TextBlock Text="History retention (days)" Style="{StaticResource LabelTextBlock}"/>
+                                        <TextBox Style="{StaticResource StyledTextBox}"
+                                                 Text="{Binding HistoryRetentionDays, UpdateSourceTrigger=PropertyChanged}"/>
+                                    </StackPanel>
+                                    <StackPanel Margin="0,0,0,8">
+                                        <CheckBox Content="Log phase history to disk"
+                                                  IsChecked="{Binding EnableHistoryLogging}"
+                                                  ToolTip="When enabled, each processed block is appended to history.db for CSV export."/>
+                                    </StackPanel>
+                                </UniformGrid>
+                                <Button Content="Save Configuration" Command="{Binding SaveConfigCommand}"
+                                        Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch"/>
+                            </StackPanel>
+                        </Border>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
+        </Grid>
     </Grid>
 </UserControl>

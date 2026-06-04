@@ -2,6 +2,21 @@
 
 All notable changes to PhaseLab are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+## [1.0.5] - 2026-06-04
+
+### Fixed
+
+- **UI:** ComboBox closed-state text invisible in dark mode; custom template now applies theme foreground correctly.
+- **UI:** ComboBox click target and text clipping (full control opens dropdown; selection no longer hidden beside arrow).
+
+### Changed
+
+- **DMTD:** Single main view with phase plot and live channel waveform; channel metrics (beat, RMS, phase) under phase chart. Right panel uses Session / Configuration tabs. Removed Live checkbox and top-level Channels tab; channel plot always updates while capturing.
+- **DMTD:** Compact Session action buttons (2×2 grid).
+- **UI:** Side panel tab headers styled as segmented control; selected tab uses accent highlight for clearer state.
+
 ## [1.0.4] - 2026-06-04
 
 ### Fixed

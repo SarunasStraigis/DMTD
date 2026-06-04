@@ -107,7 +107,7 @@ public partial class DmtdView : UserControl
             ScheduleUiRefresh();
         }
 
-        if (_viewModel.ChannelsLiveEnabled &&
+        if (_viewModel.IsCapturing &&
             _latestPoint is not null &&
             now - _lastChannelPlotRefresh >= PlotRefreshInterval)
         {
