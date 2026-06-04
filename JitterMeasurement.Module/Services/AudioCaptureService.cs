@@ -1,5 +1,6 @@
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
+using PhaseLab.UI;
 
 namespace JitterMeasurement.Module.Services;
 
@@ -43,12 +44,12 @@ public sealed class AudioCaptureService : IDisposable
         return devices;
     }
 
-    public void Start(string? deviceId, int requestedSampleRate, int inputChannelIndex)
+    public CaptureStartResult Start(string? deviceId, int requestedSampleRate, int inputChannelIndex)
     {
         Stop();
 
         _inputChannelIndex = Math.Max(0, inputChannelIndex);
-        var device = ResolveDevice(deviceId);
+        var device = WasapiCaptureFormat.ResolveDevice(deviceId);
         var mixFormat = device.AudioClient.MixFormat;
         var channelCount = Math.Max(1, mixFormat.Channels);
 
@@ -91,8 +92,11 @@ public sealed class AudioCaptureService : IDisposable
         if (_sampleRate != requestedSampleRate)
         {
             ErrorOccurred?.Invoke(
-                $"Capture opened at {_sampleRate} Hz instead of requested {requestedSampleRate} Hz.");
+                $"Capture opened at {_sampleRate} Hz instead of requested {requestedSampleRate} Hz. " +
+                "Analysis uses the actual capture rate.");
         }
+
+        return new CaptureStartResult(requestedSampleRate, _sampleRate);
     }
 
     public void Stop()
@@ -107,24 +111,6 @@ public sealed class AudioCaptureService : IDisposable
         _capture.StopRecording();
         _capture.Dispose();
         _capture = null;
-    }
-
-    private MMDevice ResolveDevice(string? deviceId)
-    {
-        var enumerator = new MMDeviceEnumerator();
-        if (!string.IsNullOrWhiteSpace(deviceId))
-        {
-            try
-            {
-                return enumerator.GetDevice(deviceId);
-            }
-            catch (Exception ex)
-            {
-                ErrorOccurred?.Invoke($"Could not open device: {ex.Message}");
-            }
-        }
-
-        return enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia);
     }
 
     private void OnDataAvailable(object? sender, WaveInEventArgs e)

@@ -2,6 +2,7 @@ using JitterMeasurement.Core;
 using JitterMeasurement.Core.Models;
 using JitterMeasurement.Module.Api;
 using JitterMeasurement.Module.Services;
+using PhaseLab.UI;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
@@ -33,6 +34,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private string _secondaryMetricUnit = "fs";
     private string _detailMetrics = "Start capture, then Calibrate while unlocked.";
     private bool _showClipWarning;
+    private int _deviceMixSampleRateHz;
+    private int? _actualCaptureSampleRateHz;
 
     public MainViewModel()
     {
@@ -65,6 +68,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             Interval = TimeSpan.FromMilliseconds(33)
         };
         _uiTimer.Tick += (_, _) => RefreshAnalysis();
+        RefreshDeviceMixFormat();
     }
 
     public bool TimeContinuousAutoscale
@@ -118,9 +122,25 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             {
                 _settings.DeviceId = value?.Id;
                 PersistSettings();
+                RefreshDeviceMixFormat();
+                TryApplyDeviceMixRateDefault();
             }
         }
     }
+
+    public int DeviceMixSampleRateHz => _deviceMixSampleRateHz;
+
+    public int? ActualCaptureSampleRateHz => _actualCaptureSampleRateHz;
+
+    public bool ShowSampleRateMismatchWarning =>
+        _deviceMixSampleRateHz > 0 &&
+        ((_actualCaptureSampleRateHz is int actual && actual != SelectedSampleRate) ||
+         SelectedSampleRate != _deviceMixSampleRateHz);
+
+    public string SampleRateMismatchToolTip =>
+        _deviceMixSampleRateHz > 0
+            ? SampleRateMismatchText.BuildToolTip(SelectedSampleRate, _deviceMixSampleRateHz)
+            : string.Empty;
 
     public int SelectedInputChannel
     {
@@ -154,6 +174,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             RebuildRingBuffer();
             PersistSettings();
             UpdateMetricDisplay();
+            NotifySampleRateWarningProperties();
         }
     }
 
@@ -365,6 +386,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
 
         SelectedDevice = ResolveDevice(previousId);
+        RefreshDeviceMixFormat();
         StatusText = _devices.Count > 0
             ? $"Found {_devices.Count} input device(s)."
             : "No input devices found.";
@@ -397,10 +419,20 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             CaptureSessionStarted?.Invoke();
             UpdateMetricDisplay();
 
-            _capture.Start(SelectedDevice.Id, SelectedSampleRate, SelectedInputChannel - 1);
+            var requested = SelectedSampleRate;
+            var result = _capture.Start(SelectedDevice.Id, requested, SelectedInputChannel - 1);
+            if (result.HasMismatch)
+            {
+                _settings.SampleRate = result.ActualSampleRateHz;
+                OnPropertyChanged(nameof(SelectedSampleRate));
+                RebuildRingBuffer();
+            }
+
+            _actualCaptureSampleRateHz = result.ActualSampleRateHz;
             _uiTimer.Start();
             IsCapturing = true;
-            StatusText = "Capturing";
+            StatusText = SampleRateMismatchText.BuildCaptureStatus(true, result);
+            NotifySampleRateWarningProperties();
         }
         catch (Exception ex)
         {
@@ -413,7 +445,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _uiTimer.Stop();
         _capture.Stop();
         IsCapturing = false;
+        _actualCaptureSampleRateHz = null;
         StatusText = string.Empty;
+        NotifySampleRateWarningProperties();
     }
 
     private void CalibrateNow()
@@ -598,6 +632,37 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    private void RefreshDeviceMixFormat()
+    {
+        try
+        {
+            var mix = WasapiCaptureFormat.GetCaptureMixFormat(_settings.DeviceId);
+            _deviceMixSampleRateHz = mix.SampleRateHz;
+        }
+        catch
+        {
+            _deviceMixSampleRateHz = 0;
+        }
+
+        NotifySampleRateWarningProperties();
+    }
+
+    private void TryApplyDeviceMixRateDefault()
+    {
+        if (_deviceMixSampleRateHz > 0 && SampleRates.Contains(_deviceMixSampleRateHz))
+        {
+            SelectedSampleRate = _deviceMixSampleRateHz;
+        }
+    }
+
+    private void NotifySampleRateWarningProperties()
+    {
+        OnPropertyChanged(nameof(ShowSampleRateMismatchWarning));
+        OnPropertyChanged(nameof(SampleRateMismatchToolTip));
+        OnPropertyChanged(nameof(DeviceMixSampleRateHz));
+        OnPropertyChanged(nameof(ActualCaptureSampleRateHz));
     }
 
     public void Dispose()

@@ -1,6 +1,7 @@
 using Dmtd.Core;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
+using PhaseLab.UI;
 using System.Collections.Concurrent;
 
 namespace Dmtd.Module.Services;
@@ -39,10 +40,64 @@ public sealed class DmtdCaptureService : IDisposable
 
     public void SetHistoryStore(PhaseHistoryStore? history) => _history = history;
 
-    public void Start(DmtdSettings settings, PhaseHistoryStore? history)
+    public CaptureStartResult Start(DmtdSettings settings, PhaseHistoryStore? history)
     {
         StopCaptureStream();
 
+        var requestedSampleRate = settings.SampleRate;
+        _settings = settings;
+        _history = history;
+        _phaseZeroOffsetRad = settings.PhaseZeroOffsetRad;
+        _prevPhaseDiffRadRaw = null;
+        _slipCount = 0;
+        _blockLeft.Clear();
+        _blockRight.Clear();
+
+        var device = WasapiCaptureFormat.ResolveDevice(settings.DeviceId);
+        _capture = new WasapiCapture(device) { ShareMode = AudioClientShareMode.Shared };
+        var channelCount = Math.Max(2, device.AudioClient.MixFormat.Channels);
+        _capture.WaveFormat = WaveFormat.CreateIeeeFloatWaveFormat(requestedSampleRate, channelCount);
+        _capture.DataAvailable += OnDataAvailable;
+        _capture.RecordingStopped += OnRecordingStopped;
+
+        try
+        {
+            _capture.StartRecording();
+        }
+        catch (Exception ex)
+        {
+            _capture.DataAvailable -= OnDataAvailable;
+            _capture.RecordingStopped -= OnRecordingStopped;
+            _capture.Dispose();
+            _capture = null;
+            throw new InvalidOperationException(
+                $"Could not open device at {requestedSampleRate} Hz. " +
+                $"Set the sample rate in Focusrite Control / Windows Sound, then try again. ({ex.Message})",
+                ex);
+        }
+
+        SampleRate = _capture.WaveFormat.SampleRate;
+        if (settings.SampleRate != SampleRate)
+        {
+            settings.SampleRate = SampleRate;
+        }
+
+        InitializeProcessor(settings);
+
+        if (requestedSampleRate != SampleRate)
+        {
+            ErrorOccurred?.Invoke(
+                $"Capture opened at {SampleRate} Hz instead of requested {requestedSampleRate} Hz. " +
+                "DSP is using the actual capture rate.");
+        }
+
+        _workerCts = new CancellationTokenSource();
+        _workerTask = Task.Run(() => WorkerLoop(_workerCts.Token));
+        return new CaptureStartResult(requestedSampleRate, SampleRate);
+    }
+
+    private void InitializeProcessor(DmtdSettings settings)
+    {
         var processorConfig = ProcessorConfig.From(settings);
         if (_processor is null || _processorConfig != processorConfig)
         {
@@ -58,36 +113,6 @@ public sealed class DmtdCaptureService : IDisposable
 
             _processorConfig = processorConfig;
         }
-
-        _settings = settings;
-        _history = history;
-        _phaseZeroOffsetRad = settings.PhaseZeroOffsetRad;
-        _prevPhaseDiffRadRaw = null;
-        _slipCount = 0;
-        _blockLeft.Clear();
-        _blockRight.Clear();
-
-        var device = ResolveDevice(settings.DeviceId);
-        _capture = new WasapiCapture(device) { ShareMode = AudioClientShareMode.Shared };
-        var channelCount = Math.Max(2, device.AudioClient.MixFormat.Channels);
-        _capture.WaveFormat = WaveFormat.CreateIeeeFloatWaveFormat(settings.SampleRate, channelCount);
-        _capture.DataAvailable += OnDataAvailable;
-        _capture.RecordingStopped += OnRecordingStopped;
-
-        try
-        {
-            _capture.StartRecording();
-        }
-        catch (Exception ex)
-        {
-            _capture.Dispose();
-            _capture = null;
-            throw new InvalidOperationException($"Could not open capture device: {ex.Message}", ex);
-        }
-
-        SampleRate = _capture.WaveFormat.SampleRate;
-        _workerCts = new CancellationTokenSource();
-        _workerTask = Task.Run(() => WorkerLoop(_workerCts.Token));
     }
 
     public void Stop()
@@ -311,24 +336,6 @@ public sealed class DmtdCaptureService : IDisposable
         {
             ErrorOccurred?.Invoke(e.Exception.Message);
         }
-    }
-
-    private static MMDevice ResolveDevice(string? deviceId)
-    {
-        var enumerator = new MMDeviceEnumerator();
-        if (!string.IsNullOrWhiteSpace(deviceId))
-        {
-            try
-            {
-                return enumerator.GetDevice(deviceId);
-            }
-            catch
-            {
-                // Fall through to default.
-            }
-        }
-
-        return enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia);
     }
 
     public void Dispose()

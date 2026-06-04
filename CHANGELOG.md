@@ -4,6 +4,17 @@ All notable changes to PhaseLab are documented here. Format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-06-04
+
+### Fixed
+
+- **DMTD:** DSP and block sizing now use the actual WASAPI capture sample rate when it differs from the rate selected in the app.
+- **Jitter:** On capture rate mismatch, settings sync to the actual rate for analysis.
+
+### Changed
+
+- **Capture:** Sample rate combo reflects a request to the device; an orange warning appears when it differs from the Windows mix format. Status shows effective capture rate. Selecting a device defaults the combo to the device mix rate when listed.
+
 ## [1.0.5] - 2026-06-04
 
 ### Fixed

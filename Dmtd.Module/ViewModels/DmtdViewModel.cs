@@ -1,6 +1,7 @@
 using Dmtd.Core;
 using Dmtd.Module.Api;
 using Dmtd.Module.Services;
+using PhaseLab.UI;
 using Microsoft.Win32;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -50,6 +51,8 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
     private EnumOption<FreqSource>? _selectedFreqSource;
     private EnumOption<IqWindow>? _selectedIqWindow;
     private string _blockDurationMsText = string.Empty;
+    private int _deviceMixSampleRateHz;
+    private int? _actualCaptureSampleRateHz;
 
     public DmtdViewModel()
     {
@@ -102,6 +105,7 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
         _capture.ErrorOccurred += msg => StatusText = msg;
 
         RefreshExportableRowCount();
+        RefreshDeviceMixFormat();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -125,9 +129,32 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
             {
                 _settings.DeviceId = value?.Id;
                 PersistSettings();
+                RefreshDeviceMixFormat();
+                TryApplyDeviceMixRateDefault();
             }
         }
     }
+
+    public int DeviceMixSampleRateHz => _deviceMixSampleRateHz;
+
+    public int? ActualCaptureSampleRateHz => _actualCaptureSampleRateHz;
+
+    public bool ShowSampleRateMismatchWarning =>
+        _deviceMixSampleRateHz > 0 &&
+        ((_actualCaptureSampleRateHz is int actual && actual != SelectedSampleRate) ||
+         SelectedSampleRate != _deviceMixSampleRateHz);
+
+    public string SampleRateMismatchToolTip =>
+        _deviceMixSampleRateHz > 0
+            ? SampleRateMismatchText.BuildToolTip(SelectedSampleRate, _deviceMixSampleRateHz)
+            : string.Empty;
+
+    public int EffectiveSampleRateHz =>
+        IsCapturing
+            ? _capture.SampleRate
+            : _deviceMixSampleRateHz > 0
+                ? _deviceMixSampleRateHz
+                : SelectedSampleRate;
 
     public int SelectedSampleRate
     {
@@ -139,6 +166,8 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
                 _settings.SampleRate = value;
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(BlockSizeDisplay));
+                OnPropertyChanged(nameof(ShowSampleRateMismatchWarning));
+                OnPropertyChanged(nameof(SampleRateMismatchToolTip));
                 PersistSettings();
             }
         }
@@ -180,7 +209,7 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
     }
 
     public string BlockSizeDisplay =>
-        $"{_settings.ResolveBlockSize(_settings.SampleRate):N0} samples @ {_settings.SampleRate / 1000.0:F0} kHz";
+        $"{_settings.ResolveBlockSize(EffectiveSampleRateHz):N0} samples @ {EffectiveSampleRateHz / 1000.0:F0} kHz";
 
     public double BeatFrequency
     {
@@ -538,6 +567,7 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
         }
 
         SelectedInputDevice = ResolveDevice(InputDevices, previousId);
+        RefreshDeviceMixFormat();
         StatusText = InputDevices.Count > 0
             ? $"Found {InputDevices.Count} input device(s)."
             : "No input devices found.";
@@ -567,9 +597,18 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
                 history = _history;
             }
 
-            _capture.Start(_settings, history);
+            var result = _capture.Start(_settings, history);
+            _actualCaptureSampleRateHz = result.ActualSampleRateHz;
             IsCapturing = true;
-            StatusText = "Capturing";
+            StatusText = SampleRateMismatchText.BuildCaptureStatus(true, result);
+            OnPropertyChanged(nameof(SelectedSampleRate));
+            OnPropertyChanged(nameof(BlockSizeDisplay));
+            NotifySampleRateWarningProperties();
+            if (result.HasMismatch)
+            {
+                PersistSettings();
+            }
+
             StartMetricsTimer();
             UpdateMetricDisplay();
             RefreshExportableRowCount();
@@ -584,8 +623,10 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
     {
         _capture.Stop();
         IsCapturing = false;
+        _actualCaptureSampleRateHz = null;
         StopMetricsTimer();
         StatusText = string.Empty;
+        NotifySampleRateWarningProperties();
         UpdateMetricDisplay();
         RefreshExportableRowCount();
         PersistSettings();
@@ -961,6 +1002,40 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
 
     private void OnPropertyChanged([CallerMemberName] string? name = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
+    private void RefreshDeviceMixFormat()
+    {
+        try
+        {
+            var mix = WasapiCaptureFormat.GetCaptureMixFormat(_settings.DeviceId);
+            _deviceMixSampleRateHz = mix.SampleRateHz;
+        }
+        catch
+        {
+            _deviceMixSampleRateHz = 0;
+        }
+
+        NotifySampleRateWarningProperties();
+        OnPropertyChanged(nameof(EffectiveSampleRateHz));
+        OnPropertyChanged(nameof(BlockSizeDisplay));
+    }
+
+    private void TryApplyDeviceMixRateDefault()
+    {
+        if (_deviceMixSampleRateHz > 0 && SampleRates.Contains(_deviceMixSampleRateHz))
+        {
+            SelectedSampleRate = _deviceMixSampleRateHz;
+        }
+    }
+
+    private void NotifySampleRateWarningProperties()
+    {
+        OnPropertyChanged(nameof(ShowSampleRateMismatchWarning));
+        OnPropertyChanged(nameof(SampleRateMismatchToolTip));
+        OnPropertyChanged(nameof(DeviceMixSampleRateHz));
+        OnPropertyChanged(nameof(ActualCaptureSampleRateHz));
+        OnPropertyChanged(nameof(EffectiveSampleRateHz));
+    }
 
     public void Dispose()
     {

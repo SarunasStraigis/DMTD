@@ -31,6 +31,12 @@
                 <ComboBox Width="90" Style="{StaticResource StyledComboBox}"
                           ItemsSource="{Binding SampleRates}"
                           SelectedItem="{Binding SelectedSampleRate}"/>
+                <TextBlock Style="{StaticResource SampleRateWarningIndicator}"
+                           Visibility="{Binding ShowSampleRateMismatchWarning, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <TextBlock.ToolTip>
+                        <TextBlock Text="{Binding SampleRateMismatchToolTip}" TextWrapping="Wrap" MaxWidth="360"/>
+                    </TextBlock.ToolTip>
+                </TextBlock>
                 <Button Command="{Binding StartStopCommand}" Width="88" Margin="12,0,0,0"
                         Content="{Binding StartStopButtonText}">
                     <Button.Style>

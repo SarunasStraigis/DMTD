@@ -266,6 +266,16 @@
         <Setter Property="LineHeight" Value="20"/>
     </Style>
 
+    <Style x:Key="SampleRateWarningIndicator" TargetType="TextBlock">
+        <Setter Property="Text" Value="⚠"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="FontWeight" Value="Bold"/>
+        <Setter Property="Foreground" Value="{DynamicResource WarningBrush}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Margin" Value="6,0,0,0"/>
+        <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+
     <Style x:Key="ModeToolbarComboBox" TargetType="ComboBox" BasedOn="{StaticResource StyledComboBox}">
         <Setter Property="MinWidth" Value="220"/>
         <Setter Property="FontWeight" Value="SemiBold"/>

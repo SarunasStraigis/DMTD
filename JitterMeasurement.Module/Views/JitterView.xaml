@@ -4,6 +4,9 @@
              xmlns:ScottPlot="clr-namespace:ScottPlot.WPF;assembly=ScottPlot.WPF"
              Background="{DynamicResource AppBackgroundBrush}"
              FontFamily="Segoe UI">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+    </UserControl.Resources>
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -28,6 +31,12 @@
                     <TextBlock Text="Sample rate:" Style="{StaticResource LabelTextBlock}" Margin="16,0,8,0"/>
                     <ComboBox Width="100" Style="{StaticResource StyledComboBox}"
                               ItemsSource="{Binding SampleRates}" SelectedItem="{Binding SelectedSampleRate}"/>
+                    <TextBlock Style="{StaticResource SampleRateWarningIndicator}"
+                               Visibility="{Binding ShowSampleRateMismatchWarning, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <TextBlock.ToolTip>
+                            <TextBlock Text="{Binding SampleRateMismatchToolTip}" TextWrapping="Wrap" MaxWidth="360"/>
+                        </TextBlock.ToolTip>
+                    </TextBlock>
                     <TextBlock Text="Input:" Style="{StaticResource LabelTextBlock}" Margin="16,0,8,0"/>
                     <ComboBox Width="60" Style="{StaticResource StyledComboBox}"
                               ItemsSource="{Binding InputChannels}" SelectedItem="{Binding SelectedInputChannel}"/>

@@ -18,6 +18,8 @@ The app checks for updates on startup and prompts before installing.
 dotnet run --project PhaseLab.Shell/PhaseLab.Shell.csproj
 ```
 
+**Sample rate:** The rate in the app must match **Windows Sound** (input device → Properties → Advanced) and your interface control panel (e.g. Focusrite Control). If they differ, an orange warning appears beside the rate selector; measurements may be wrong or noisy until they match.
+
 Publish a single-file exe:
 
 ```powershell
