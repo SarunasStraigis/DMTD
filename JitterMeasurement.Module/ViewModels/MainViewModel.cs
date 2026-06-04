@@ -25,9 +25,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private bool _isCapturing;
     private string _statusText = "Ready";
     private AudioDeviceInfo? _selectedDevice;
-    private string _primaryMetricTitle = "Jitter RMS";
+    private string _primaryMetricTitle = "Integrated jitter";
     private string _primaryMetricValue = "—";
     private string _primaryMetricUnit = "fs";
+    private string _secondaryMetricTitle = "Jitter RMS (full bandwidth)";
+    private string _secondaryMetricValue = "—";
+    private string _secondaryMetricUnit = "fs";
     private string _detailMetrics = "Start capture, then Calibrate while unlocked.";
     private bool _showClipWarning;
 
@@ -51,6 +54,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         SampleRates = new[] { 44100, 48000, 88200, 96000, 176400, 192000 };
 
         StartStopCommand = new RelayCommand(ToggleCapture, () => SelectedDevice is not null);
+        RefreshDevicesCommand = new RelayCommand(RefreshDevices);
         CalibrateCommand = new RelayCommand(CalibrateNow, () => IsCapturing);
 
         _capture.SamplesAvailable += OnSamplesAvailable;
@@ -149,6 +153,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             OnPropertyChanged();
             RebuildRingBuffer();
             PersistSettings();
+            UpdateMetricDisplay();
         }
     }
 
@@ -193,6 +198,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 _settings.IntegrationBandLowHz = value;
                 OnPropertyChanged();
                 PersistSettings();
+                UpdateMetricDisplay();
             }
         }
     }
@@ -208,9 +214,19 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 OnPropertyChanged();
                 PersistSettings();
                 FftViewRangeChanged?.Invoke();
+                UpdateMetricDisplay();
             }
         }
     }
+
+    public string IntegrationBandToolTip =>
+        "Welch √(∫ PSD) band in Hz. Upper limit is capped at Nyquist (sample rate ÷ 2), e.g. 96 kHz at 192 kHz. Default 10 Hz–10 kHz excludes slow wander.";
+
+    public string IntegratedJitterToolTip =>
+        "Integrated jitter: √(∫ one-sided PSD) over the band above, via Hann-windowed Welch segments. Differs from time RMS when power is outside the band or at very low frequency.";
+
+    public string RmsJitterToolTip =>
+        "Time-domain RMS over the full capture window after one DC removal (all frequencies in the window). Soundcard AC coupling does not make this equal to integrated jitter.";
 
     public double FftViewMaxKHz
     {
@@ -281,6 +297,24 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         private set => SetField(ref _primaryMetricUnit, value);
     }
 
+    public string SecondaryMetricTitle
+    {
+        get => _secondaryMetricTitle;
+        private set => SetField(ref _secondaryMetricTitle, value);
+    }
+
+    public string SecondaryMetricValue
+    {
+        get => _secondaryMetricValue;
+        private set => SetField(ref _secondaryMetricValue, value);
+    }
+
+    public string SecondaryMetricUnit
+    {
+        get => _secondaryMetricUnit;
+        private set => SetField(ref _secondaryMetricUnit, value);
+    }
+
     public string DetailMetrics
     {
         get => _detailMetrics;
@@ -294,6 +328,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     }
 
     public ICommand StartStopCommand { get; }
+    public ICommand RefreshDevicesCommand { get; }
     public ICommand CalibrateCommand { get; }
 
     public AnalysisSnapshot? LatestSnapshot => _latestSnapshot;
@@ -435,12 +470,20 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private void UpdateMetricDisplay()
     {
-        PrimaryMetricTitle = "Jitter RMS";
+        var sampleRate = AnalysisSampleRate;
+        var (bandLowHz, bandHighHz) = IntegrationBand.Clamp(
+            IntegrationLowHz,
+            IntegrationHighHz,
+            sampleRate);
+        PrimaryMetricTitle = $"Integrated jitter ({bandLowHz:F0}–{bandHighHz:F0} Hz)";
+        SecondaryMetricTitle = "Jitter RMS (full bandwidth)";
         PrimaryMetricUnit = "fs";
+        SecondaryMetricUnit = "fs";
 
         if (_latestSnapshot is null)
         {
             PrimaryMetricValue = "—";
+            SecondaryMetricValue = "—";
             DetailMetrics = _storedCalibration is null
                 ? "Start capture, then Calibrate while unlocked."
                 : FormatCalibrationDetail(_storedCalibration) + "\n\nWaiting for data...";
@@ -452,6 +495,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         if (jitter is null || !jitter.IsValid)
         {
             PrimaryMetricValue = "—";
+            SecondaryMetricValue = "—";
             DetailMetrics = _storedCalibration is null
                 ? "Click Calibrate while unlocked to set Vpp."
                 : FormatCalibrationDetail(_storedCalibration) + "\n\n" +
@@ -460,10 +504,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
-        PrimaryMetricValue = jitter.SigmaTFs.ToString("F1");
+        PrimaryMetricValue = jitter.IntegratedTFs.ToString("F1");
+        SecondaryMetricValue = jitter.SigmaTFs.ToString("F1");
         DetailMetrics =
-            $"Integrated ({IntegrationLowHz:F0}–{IntegrationHighHz:F0} Hz)\n" +
-            $"{jitter.IntegratedTFs:F1} fs\n\n" +
             $"RMS error: {jitter.SigmaVRms * 1000:F3} mV\n" +
             $"Phase: {jitter.SigmaPhiRad * 1000:F2} mrad\n" +
             $"Harmonic: {jitter.HarmonicFrequencyHz / 1e6:F3} MHz\n\n" +

@@ -95,16 +95,6 @@ public static class DmtdSettingsStore
                 };
             }
 
-            if (root.TryGetProperty("demod_mode", out var dm))
-            {
-                settings.DemodMode = dm.GetString() switch
-                {
-                    "block_iq_fir" => DemodMode.BlockIqFir,
-                    "pll_tracker" => DemodMode.PllTracker,
-                    _ => DemodMode.BlockIq
-                };
-            }
-
             if (root.TryGetProperty("iq_window", out var iw))
             {
                 settings.IqWindow = iw.GetString() == "none" ? IqWindow.None : IqWindow.Hann;
@@ -113,31 +103,6 @@ public static class DmtdSettingsStore
             if (root.TryGetProperty("iq_min_mag", out var imm))
             {
                 settings.IqMinMag = imm.GetDouble();
-            }
-
-            if (root.TryGetProperty("iq_lpf_cutoff_hz", out var lpf))
-            {
-                settings.IqLpfCutoffHz = lpf.GetDouble();
-            }
-
-            if (root.TryGetProperty("iq_lpf_order", out var lpo))
-            {
-                settings.IqLpfOrder = lpo.GetInt32();
-            }
-
-            if (root.TryGetProperty("pll_kp", out var pk))
-            {
-                settings.PllKp = pk.GetDouble();
-            }
-
-            if (root.TryGetProperty("pll_ki", out var pi))
-            {
-                settings.PllKi = pi.GetDouble();
-            }
-
-            if (root.TryGetProperty("pll_min_mag", out var pmm))
-            {
-                settings.PllMinMag = pmm.GetDouble();
             }
 
             Save(settings);

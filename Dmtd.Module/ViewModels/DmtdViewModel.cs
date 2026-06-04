@@ -49,7 +49,6 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
     private int _exportableRowCount;
     private EnumOption<FreqEstimator>? _selectedFreqEstimator;
     private EnumOption<FreqSource>? _selectedFreqSource;
-    private EnumOption<DemodMode>? _selectedDemodMode;
     private EnumOption<IqWindow>? _selectedIqWindow;
     private string _blockDurationMsText = string.Empty;
 
@@ -72,12 +71,6 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
             new EnumOption<FreqSource> { Label = "Channel A only", Value = FreqSource.ChA },
             new EnumOption<FreqSource> { Label = "Average of A and B", Value = FreqSource.AvgAb }
         ];
-        DemodModeOptions =
-        [
-            new EnumOption<DemodMode> { Label = "Block IQ (legacy atan2)", Value = DemodMode.BlockIq },
-            new EnumOption<DemodMode> { Label = "Block IQ + LPF (noise-reduced)", Value = DemodMode.BlockIqFir },
-            new EnumOption<DemodMode> { Label = "PLL tracker (amplitude-robust)", Value = DemodMode.PllTracker }
-        ];
         IqWindowOptions =
         [
             new EnumOption<IqWindow> { Label = "Hann (recommended)", Value = IqWindow.Hann },
@@ -86,7 +79,6 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
 
         _selectedFreqEstimator = FreqEstimatorOptions.First(o => o.Value == _settings.FreqEstimator);
         _selectedFreqSource = FreqSourceOptions.First(o => o.Value == _settings.FreqSource);
-        _selectedDemodMode = DemodModeOptions.First(o => o.Value == _settings.DemodMode);
         _selectedIqWindow = IqWindowOptions.First(o => o.Value == _settings.IqWindow);
 
         StartStopCommand = new RelayCommand(ToggleCapture);
@@ -121,7 +113,6 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
     public IReadOnlyList<int> SampleRates { get; }
     public IReadOnlyList<EnumOption<FreqEstimator>> FreqEstimatorOptions { get; }
     public IReadOnlyList<EnumOption<FreqSource>> FreqSourceOptions { get; }
-    public IReadOnlyList<EnumOption<DemodMode>> DemodModeOptions { get; }
     public IReadOnlyList<EnumOption<IqWindow>> IqWindowOptions { get; }
 
     public DmtdSettings Settings => _settings;
@@ -239,20 +230,6 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    public EnumOption<DemodMode>? SelectedDemodMode
-    {
-        get => _selectedDemodMode;
-        set
-        {
-            if (SetField(ref _selectedDemodMode, value) && value is not null)
-            {
-                _settings.DemodMode = value.Value;
-                NotifyConfigVisibility();
-                PersistSettings();
-            }
-        }
-    }
-
     public EnumOption<FreqSource>? SelectedFreqSource
     {
         get => _selectedFreqSource;
@@ -279,34 +256,6 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    public double IqLpfCutoffHz
-    {
-        get => _settings.IqLpfCutoffHz;
-        set
-        {
-            if (Math.Abs(_settings.IqLpfCutoffHz - value) > double.Epsilon)
-            {
-                _settings.IqLpfCutoffHz = value;
-                OnPropertyChanged();
-                PersistSettings();
-            }
-        }
-    }
-
-    public int IqLpfOrder
-    {
-        get => _settings.IqLpfOrder;
-        set
-        {
-            if (_settings.IqLpfOrder != value)
-            {
-                _settings.IqLpfOrder = Math.Clamp(value, 1, 12);
-                OnPropertyChanged();
-                PersistSettings();
-            }
-        }
-    }
-
     public double IqMinMag
     {
         get => _settings.IqMinMag;
@@ -315,48 +264,6 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
             if (Math.Abs(_settings.IqMinMag - value) > double.Epsilon)
             {
                 _settings.IqMinMag = value;
-                OnPropertyChanged();
-                PersistSettings();
-            }
-        }
-    }
-
-    public double PllKp
-    {
-        get => _settings.PllKp;
-        set
-        {
-            if (Math.Abs(_settings.PllKp - value) > double.Epsilon)
-            {
-                _settings.PllKp = value;
-                OnPropertyChanged();
-                PersistSettings();
-            }
-        }
-    }
-
-    public double PllKi
-    {
-        get => _settings.PllKi;
-        set
-        {
-            if (Math.Abs(_settings.PllKi - value) > double.Epsilon)
-            {
-                _settings.PllKi = value;
-                OnPropertyChanged();
-                PersistSettings();
-            }
-        }
-    }
-
-    public double PllMinMag
-    {
-        get => _settings.PllMinMag;
-        set
-        {
-            if (Math.Abs(_settings.PllMinMag - value) > double.Epsilon)
-            {
-                _settings.PllMinMag = value;
                 OnPropertyChanged();
                 PersistSettings();
             }
@@ -378,9 +285,6 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
     }
 
     public bool ShowFreqSource => _settings.FreqEstimator == FreqEstimator.FftPeak;
-    public bool ShowIqLpfFields => _settings.DemodMode == DemodMode.BlockIqFir;
-    public bool ShowIqMinMag => _settings.DemodMode is DemodMode.BlockIq or DemodMode.BlockIqFir;
-    public bool ShowPllFields => _settings.DemodMode == DemodMode.PllTracker;
 
     public bool IsCapturing
     {
@@ -628,13 +532,8 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
         };
     }
 
-    private void NotifyConfigVisibility()
-    {
+    private void NotifyConfigVisibility() =>
         OnPropertyChanged(nameof(ShowFreqSource));
-        OnPropertyChanged(nameof(ShowIqLpfFields));
-        OnPropertyChanged(nameof(ShowIqMinMag));
-        OnPropertyChanged(nameof(ShowPllFields));
-    }
 
     private void RefreshInputDevices()
     {

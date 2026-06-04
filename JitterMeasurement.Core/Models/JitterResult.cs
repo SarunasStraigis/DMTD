@@ -8,6 +8,8 @@ public sealed class JitterResult
     public required double SigmaTFs { get; init; }
     public required double IntegratedPhiRad { get; init; }
     public required double IntegratedTFs { get; init; }
+    public double[] CumulativeJitterFreqHz { get; init; } = Array.Empty<double>();
+    public double[] CumulativeJitterFs { get; init; } = Array.Empty<double>();
     public required double HarmonicFrequencyHz { get; init; }
     public required bool IsClipping { get; init; }
     public required bool IsValid { get; init; }

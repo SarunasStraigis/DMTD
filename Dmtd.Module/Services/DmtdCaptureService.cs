@@ -344,15 +344,9 @@ public sealed class DmtdCaptureService : IDisposable
         double BeatFrequency,
         double RefFrequency,
         FreqEstimator FreqEstimator,
-        DemodMode DemodMode,
         FreqSource FreqSource,
-        double IqLpfCutoffHz,
-        int IqLpfOrder,
         double IqMinMag,
-        IqWindow IqWindow,
-        double PllKp,
-        double PllKi,
-        double PllMinMag)
+        IqWindow IqWindow)
     {
         public static ProcessorConfig From(DmtdSettings settings) =>
             new(
@@ -360,14 +354,8 @@ public sealed class DmtdCaptureService : IDisposable
                 settings.BeatFrequency,
                 settings.RefFrequency,
                 settings.FreqEstimator,
-                settings.DemodMode,
                 settings.FreqSource,
-                settings.IqLpfCutoffHz,
-                settings.IqLpfOrder,
                 settings.IqMinMag,
-                settings.IqWindow,
-                settings.PllKp,
-                settings.PllKi,
-                settings.PllMinMag);
+                settings.IqWindow);
     }
 }

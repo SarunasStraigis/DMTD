@@ -217,13 +217,6 @@
                                               SelectedItem="{Binding SelectedFreqSource}"
                                               DisplayMemberPath="Label"/>
                                 </StackPanel>
-                                <StackPanel Margin="0,0,8,8">
-                                    <TextBlock Text="Demodulation mode" Style="{StaticResource LabelTextBlock}"/>
-                                    <ComboBox Style="{StaticResource StyledComboBox}"
-                                              ItemsSource="{Binding DemodModeOptions}"
-                                              SelectedItem="{Binding SelectedDemodMode}"
-                                              DisplayMemberPath="Label"/>
-                                </StackPanel>
                                 <StackPanel Margin="8,0,0,8">
                                     <TextBlock Text="IQ integration window" Style="{StaticResource LabelTextBlock}"/>
                                     <ComboBox Style="{StaticResource StyledComboBox}"
@@ -231,41 +224,10 @@
                                               SelectedItem="{Binding SelectedIqWindow}"
                                               DisplayMemberPath="Label"/>
                                 </StackPanel>
-                                <StackPanel Margin="0,0,8,8"
-                                            Visibility="{Binding ShowIqLpfFields, Converter={StaticResource BoolToVisibilityConverter}}">
-                                    <TextBlock Text="IQ LPF cutoff (Hz)" Style="{StaticResource LabelTextBlock}"/>
-                                    <TextBox Style="{StaticResource StyledTextBox}"
-                                             Text="{Binding IqLpfCutoffHz, UpdateSourceTrigger=PropertyChanged}"/>
-                                </StackPanel>
-                                <StackPanel Margin="8,0,0,8"
-                                            Visibility="{Binding ShowIqLpfFields, Converter={StaticResource BoolToVisibilityConverter}}">
-                                    <TextBlock Text="IQ LPF order" Style="{StaticResource LabelTextBlock}"/>
-                                    <TextBox Style="{StaticResource StyledTextBox}"
-                                             Text="{Binding IqLpfOrder, UpdateSourceTrigger=PropertyChanged}"/>
-                                </StackPanel>
-                                <StackPanel Margin="0,0,8,8"
-                                            Visibility="{Binding ShowIqMinMag, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <StackPanel Margin="0,0,8,8">
                                     <TextBlock Text="IQ min magnitude" Style="{StaticResource LabelTextBlock}"/>
                                     <TextBox Style="{StaticResource StyledTextBox}"
                                              Text="{Binding IqMinMag, UpdateSourceTrigger=PropertyChanged}"/>
-                                </StackPanel>
-                                <StackPanel Margin="8,0,0,8"
-                                            Visibility="{Binding ShowPllFields, Converter={StaticResource BoolToVisibilityConverter}}">
-                                    <TextBlock Text="PLL Kp" Style="{StaticResource LabelTextBlock}"/>
-                                    <TextBox Style="{StaticResource StyledTextBox}"
-                                             Text="{Binding PllKp, UpdateSourceTrigger=PropertyChanged}"/>
-                                </StackPanel>
-                                <StackPanel Margin="0,0,8,8"
-                                            Visibility="{Binding ShowPllFields, Converter={StaticResource BoolToVisibilityConverter}}">
-                                    <TextBlock Text="PLL Ki" Style="{StaticResource LabelTextBlock}"/>
-                                    <TextBox Style="{StaticResource StyledTextBox}"
-                                             Text="{Binding PllKi, UpdateSourceTrigger=PropertyChanged}"/>
-                                </StackPanel>
-                                <StackPanel Margin="8,0,0,8"
-                                            Visibility="{Binding ShowPllFields, Converter={StaticResource BoolToVisibilityConverter}}">
-                                    <TextBlock Text="PLL min I/Q magnitude" Style="{StaticResource LabelTextBlock}"/>
-                                    <TextBox Style="{StaticResource StyledTextBox}"
-                                             Text="{Binding PllMinMag, UpdateSourceTrigger=PropertyChanged}"/>
                                 </StackPanel>
                                 <StackPanel Margin="0,0,8,8">
                                     <TextBlock Text="History retention (days)" Style="{StaticResource LabelTextBlock}"/>

@@ -12,11 +12,18 @@ public static class MeasurementEngine
         PhaseDetectorCal? existingCalibration)
     {
         var sampleRate = settings.SampleRate;
-        var displaySamples = SignalProcessor.DecimateForDisplay(samples, MaxDisplayPoints);
-        var timeAxis = SignalProcessor.BuildTimeAxis(displaySamples.Length, sampleRate);
+        var (timeAxis, displaySamples) = SignalProcessor.DecimateForDisplayWithTime(
+            samples,
+            MaxDisplayPoints,
+            sampleRate);
         var displayVolts = displaySamples.Select(s => (double)s).ToArray();
 
         var (fftFrequencies, fftMagnitudesDb) = SignalProcessor.ComputeMagnitudeSpectrum(samples, sampleRate);
+
+        var (integrationLowHz, integrationHighHz) = IntegrationBand.Clamp(
+            settings.IntegrationBandLowHz,
+            settings.IntegrationBandHighHz,
+            sampleRate);
 
         JitterResult? jitter = null;
         if (existingCalibration is { KpdVPerRad: > 0 })
@@ -37,13 +44,15 @@ public static class MeasurementEngine
             TimeVolts = displayVolts,
             FftFrequenciesHz = fftFrequencies,
             FftMagnitudeDb = fftMagnitudesDb,
+            CumulativeJitterFreqHz = jitter?.CumulativeJitterFreqHz ?? Array.Empty<double>(),
+            CumulativeJitterFs = jitter?.CumulativeJitterFs ?? Array.Empty<double>(),
             Calibration = existingCalibration,
             Jitter = jitter,
             SampleRate = sampleRate,
-            IntegrationBandLowHz = settings.IntegrationBandLowHz,
-            IntegrationBandHighHz = settings.IntegrationBandHighHz,
+            IntegrationBandLowHz = integrationLowHz,
+            IntegrationBandHighHz = integrationHighHz,
             FftViewMaxHz = FftViewRange.ComputeMaxHz(
-                settings.IntegrationBandHighHz,
+                integrationHighHz,
                 sampleRate,
                 settings.FftViewMaxHz)
         };

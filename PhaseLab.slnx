@@ -8,4 +8,5 @@
   <Project Path="JitterMeasurement.Core/JitterMeasurement.Core.csproj" />
   <Project Path="JitterMeasurement.Module/JitterMeasurement.Module.csproj" />
   <Project Path="Dmtd.Core.Tests/Dmtd.Core.Tests.csproj" />
+  <Project Path="JitterMeasurement.Core.Tests/JitterMeasurement.Core.Tests.csproj" />
 </Solution>

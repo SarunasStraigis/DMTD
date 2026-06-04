@@ -16,8 +16,7 @@ public class DmtdProcessorTests
             SampleRate = sampleRate,
             BeatFrequency = beatHz,
             RefFrequency = 90_000_000,
-            FreqEstimator = FreqEstimator.Fixed,
-            DemodMode = DemodMode.BlockIq
+            FreqEstimator = FreqEstimator.Fixed
         };
 
         var processor = new DmtdProcessor(settings);

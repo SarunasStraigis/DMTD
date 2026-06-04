@@ -45,9 +45,7 @@ public partial class DmtdView : UserControl
     {
         PhasePlot.Plot.Axes.Bottom.Label.Text = "Time (s)";
         PhasePlot.Plot.Axes.Left.Label.Text = "Δt (ps)";
-        PhasePlot.Plot.Title("Differential phase");
 
-        ChannelPlot.Plot.Title("Channels (live)");
         ChannelPlot.Plot.Axes.Bottom.Label.Text = "Time (s)";
         ChannelPlot.Plot.Axes.Left.Label.Text = "Amplitude";
 

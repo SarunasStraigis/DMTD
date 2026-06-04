@@ -13,6 +13,7 @@ public partial class JitterView : UserControl
     private readonly MainViewModel _viewModel;
     private bool _timeInitialScaled;
     private bool _fftInitialScaled;
+    private ScottPlot.IYAxis? _fftRightAxis;
 
     public JitterView(MainViewModel viewModel)
     {
@@ -70,14 +71,14 @@ public partial class JitterView : UserControl
     private void ConfigurePlots()
     {
         TimePlot.Plot.Axes.ContinuouslyAutoscale = false;
-        TimePlot.Plot.Title("Error voltage (time)");
         TimePlot.Plot.Axes.Bottom.Label.Text = "Time (s)";
         TimePlot.Plot.Axes.Left.Label.Text = "Voltage (V)";
 
         FftPlot.Plot.Axes.ContinuouslyAutoscale = false;
-        FftPlot.Plot.Title("Magnitude spectrum");
         FftPlot.Plot.Axes.Bottom.Label.Text = "Frequency (Hz)";
         FftPlot.Plot.Axes.Left.Label.Text = "Magnitude (dB)";
+        _fftRightAxis = FftPlot.Plot.Axes.AddRightAxis();
+        _fftRightAxis.Label.Text = "Integrated jitter (fs)";
 
         ApplyPlotChrome();
     }
@@ -107,14 +108,6 @@ public partial class JitterView : UserControl
             StyleSignal(TimePlot.Plot.Add.SignalXY(snapshot.TimeSeconds, snapshot.TimeVolts));
         }
 
-        var title = "Error voltage (time)";
-        if (snapshot.Calibration?.IsClipping == true || snapshot.Jitter?.IsClipping == true)
-        {
-            title += " [CLIP]";
-        }
-
-        TimePlot.Plot.Title(title);
-
         if (snapshot.TimeSeconds.Length > 0)
         {
             if (_viewModel.TimeContinuousAutoscale || !_timeInitialScaled)
@@ -130,10 +123,30 @@ public partial class JitterView : UserControl
     private void UpdateFftPlot(AnalysisSnapshot snapshot)
     {
         FftPlot.Plot.Clear();
+        if (_fftRightAxis is null)
+        {
+            _fftRightAxis = FftPlot.Plot.Axes.AddRightAxis();
+            _fftRightAxis.Label.Text = "Integrated jitter (fs)";
+        }
+
         if (snapshot.FftFrequenciesHz.Length > 0)
         {
             AddIntegrationMarkers(FftPlot.Plot, snapshot.IntegrationBandLowHz, snapshot.IntegrationBandHighHz);
-            StyleSignal(FftPlot.Plot.Add.SignalXY(snapshot.FftFrequenciesHz, snapshot.FftMagnitudeDb));
+            var magnitude = FftPlot.Plot.Add.SignalXY(snapshot.FftFrequenciesHz, snapshot.FftMagnitudeDb);
+            StyleSignal(magnitude);
+            magnitude.LegendText = "Magnitude (dB)";
+
+            var (cumulativeFreqHz, cumulativeJitterFs) = GetVisibleCumulativeJitter(snapshot);
+            if (cumulativeFreqHz.Length > 0 && _fftRightAxis is not null)
+            {
+                var cumulative = FftPlot.Plot.Add.SignalXY(cumulativeFreqHz, cumulativeJitterFs);
+                cumulative.Axes.YAxis = _fftRightAxis;
+                cumulative.Color = PlotThemeHelper.GetSecondarySignalColor();
+                cumulative.LineWidth = 1.5f;
+                cumulative.LegendText = "Integrated jitter (fs)";
+            }
+
+            PlotThemeHelper.ApplyLegend(FftPlot.Plot);
         }
 
         if (snapshot.FftFrequenciesHz.Length > 0)
@@ -146,6 +159,51 @@ public partial class JitterView : UserControl
         }
 
         FftPlot.Refresh();
+    }
+
+    private static (double[] FrequenciesHz, double[] JitterFs) GetVisibleCumulativeJitter(AnalysisSnapshot snapshot)
+    {
+        var freqs = snapshot.CumulativeJitterFreqHz;
+        var jitterFs = snapshot.CumulativeJitterFs;
+        if (freqs.Length == 0 || jitterFs.Length != freqs.Length)
+        {
+            return (Array.Empty<double>(), Array.Empty<double>());
+        }
+
+        var xMax = snapshot.FftViewMaxHz;
+        var lowHz = snapshot.IntegrationBandLowHz;
+        var count = 0;
+        for (var i = 0; i < freqs.Length; i++)
+        {
+            if (freqs[i] > xMax || freqs[i] < lowHz || jitterFs[i] <= 0)
+            {
+                continue;
+            }
+
+            count++;
+        }
+
+        if (count == 0)
+        {
+            return (Array.Empty<double>(), Array.Empty<double>());
+        }
+
+        var xs = new double[count];
+        var ys = new double[count];
+        var index = 0;
+        for (var i = 0; i < freqs.Length; i++)
+        {
+            if (freqs[i] > xMax || freqs[i] < lowHz || jitterFs[i] <= 0)
+            {
+                continue;
+            }
+
+            xs[index] = freqs[i];
+            ys[index] = jitterFs[i];
+            index++;
+        }
+
+        return (xs, ys);
     }
 
     private static void StyleSignal(SignalXY signal)
@@ -181,6 +239,17 @@ public partial class JitterView : UserControl
         var (yMin, yMax) = PlotScaleHelper.RangeWithPadding(visibleMagnitudes);
         FftPlot.Plot.Axes.SetLimitsX(0, xMax);
         FftPlot.Plot.Axes.SetLimitsY(yMin, yMax);
+
+        if (_fftRightAxis is not null)
+        {
+            var (_, cumulativeJitterFs) = GetVisibleCumulativeJitter(snapshot);
+            if (cumulativeJitterFs.Length > 0)
+            {
+                var (rightMin, rightMax) = PlotScaleHelper.RangeWithPadding(cumulativeJitterFs);
+                _fftRightAxis.Min = rightMin;
+                _fftRightAxis.Max = rightMax;
+            }
+        }
     }
 
     private static double[] GetVisibleFftMagnitudes(AnalysisSnapshot snapshot, double xMaxHz)
@@ -230,10 +299,18 @@ public partial class JitterView : UserControl
 
     private void UpdateAutoscaleButtonLabels()
     {
-        TimeAutoscaleButton.Content = AutoscaleButtonLabel(_viewModel.TimeContinuousAutoscale);
-        FftAutoscaleButton.Content = AutoscaleButtonLabel(_viewModel.FftContinuousAutoscale);
+        UpdateAutoscaleButton(TimeAutoscaleButton, _viewModel.TimeContinuousAutoscale);
+        UpdateAutoscaleButton(FftAutoscaleButton, _viewModel.FftContinuousAutoscale);
+    }
+
+    private static void UpdateAutoscaleButton(Button button, bool enabled)
+    {
+        button.Content = AutoscaleButtonLabel(enabled);
+        button.BorderBrush = enabled
+            ? (System.Windows.Media.Brush)Application.Current.FindResource("AccentBrush")
+            : (System.Windows.Media.Brush)Application.Current.FindResource("SurfaceBorderBrush");
     }
 
     private static string AutoscaleButtonLabel(bool enabled) =>
-        enabled ? "Continuous auto: On" : "Continuous auto: Off";
+        enabled ? "Auto: On" : "Auto: Off";
 }

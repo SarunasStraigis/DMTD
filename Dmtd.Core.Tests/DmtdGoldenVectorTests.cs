@@ -27,19 +27,15 @@ public sealed class DmtdGoldenVectorTests
             var (chA, chB) = GoldenSignalGenerator.CreateBlock(generator, blockIndex);
             var actual = processor.ProcessBlock(chA, chB);
             var expected = testCase.Expected[blockIndex];
-            var tolerance = SelectTolerance(testCase.Name);
-            var assertAbsolutePhases = !testCase.Name.Contains("fir", StringComparison.OrdinalIgnoreCase);
+            const double tolerance = 1e-7;
 
             AssertEqual(expected.PhaseDiffRad, actual.PhaseDiffRad, tolerance, $"{testCase.Name}[{blockIndex}].phase_diff_rad");
             AssertEqual(expected.PhaseDiffPs, actual.PhaseDiffPs, tolerance * PhaseMath.PsPerRad(settings.RefFrequency), $"{testCase.Name}[{blockIndex}].phase_diff_ps");
             AssertEqual(expected.BeatFreq, actual.BeatFreq, 1e-9, $"{testCase.Name}[{blockIndex}].beat_freq");
-            if (assertAbsolutePhases)
-            {
-                AssertEqual(expected.PhaseAPs, actual.PhaseAPs, tolerance * PhaseMath.PsPerRad(settings.RefFrequency), $"{testCase.Name}[{blockIndex}].phase_a_ps");
-                AssertEqual(expected.PhaseBPs, actual.PhaseBPs, tolerance * PhaseMath.PsPerRad(settings.RefFrequency), $"{testCase.Name}[{blockIndex}].phase_b_ps");
-                AssertEqual(expected.PhaseADeg, actual.PhaseADeg, tolerance * (180.0 / Math.PI), $"{testCase.Name}[{blockIndex}].phase_a_deg");
-                AssertEqual(expected.PhaseBDeg, actual.PhaseBDeg, tolerance * (180.0 / Math.PI), $"{testCase.Name}[{blockIndex}].phase_b_deg");
-            }
+            AssertEqual(expected.PhaseAPs, actual.PhaseAPs, tolerance * PhaseMath.PsPerRad(settings.RefFrequency), $"{testCase.Name}[{blockIndex}].phase_a_ps");
+            AssertEqual(expected.PhaseBPs, actual.PhaseBPs, tolerance * PhaseMath.PsPerRad(settings.RefFrequency), $"{testCase.Name}[{blockIndex}].phase_b_ps");
+            AssertEqual(expected.PhaseADeg, actual.PhaseADeg, tolerance * (180.0 / Math.PI), $"{testCase.Name}[{blockIndex}].phase_a_deg");
+            AssertEqual(expected.PhaseBDeg, actual.PhaseBDeg, tolerance * (180.0 / Math.PI), $"{testCase.Name}[{blockIndex}].phase_b_deg");
             AssertEqual(expected.RmsA, actual.RmsA, 1e-6, $"{testCase.Name}[{blockIndex}].rms_a");
             AssertEqual(expected.RmsB, actual.RmsB, 1e-6, $"{testCase.Name}[{blockIndex}].rms_b");
         }
@@ -68,21 +64,10 @@ public sealed class DmtdGoldenVectorTests
             BeatFrequency = settings.BeatFrequency,
             RefFrequency = settings.RefFrequency,
             FreqEstimator = settings.FreqEstimator,
-            DemodMode = settings.DemodMode,
             FreqSource = settings.FreqSource,
-            IqLpfCutoffHz = settings.IqLpfCutoffHz,
-            IqLpfOrder = settings.IqLpfOrder,
             IqMinMag = settings.IqMinMag,
-            IqWindow = settings.IqWindow,
-            PllKp = settings.PllKp,
-            PllKi = settings.PllKi,
-            PllMinMag = settings.PllMinMag
+            IqWindow = settings.IqWindow
         };
-
-    private static double SelectTolerance(string caseName) =>
-        caseName.Contains("fir", StringComparison.OrdinalIgnoreCase) ? 1e-3 :
-        caseName.Contains("pll", StringComparison.OrdinalIgnoreCase) ? 2e-3 :
-        1e-7;
 
     private static void AssertEqual(double expected, double actual, double tolerance, string label)
     {
@@ -112,15 +97,9 @@ public sealed class GoldenSettings
     public double BeatFrequency { get; init; }
     public double RefFrequency { get; init; }
     public FreqEstimator FreqEstimator { get; init; } = FreqEstimator.Fixed;
-    public DemodMode DemodMode { get; init; } = DemodMode.BlockIq;
     public FreqSource FreqSource { get; init; } = FreqSource.ChA;
-    public double IqLpfCutoffHz { get; init; } = 120.0;
-    public int IqLpfOrder { get; init; } = 4;
     public double IqMinMag { get; init; } = 1e-4;
     public IqWindow IqWindow { get; init; } = IqWindow.Hann;
-    public double PllKp { get; init; } = 0.3;
-    public double PllKi { get; init; } = 0.03;
-    public double PllMinMag { get; init; } = 1e-4;
     public double BOffsetRad { get; init; }
     public double BDriftRadPerBlock { get; init; }
     public double Amp { get; init; } = 0.45;

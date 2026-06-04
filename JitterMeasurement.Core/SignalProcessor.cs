@@ -165,6 +165,7 @@ public static class SignalProcessor
         var half = fftSize / 2;
         var psd = new double[half];
         var segmentCount = 0;
+        var windowSumSq = HannWindowSumSquares(segmentLength);
 
         for (var start = 0; start + segmentLength <= samples.Length; start += step)
         {
@@ -175,7 +176,7 @@ public static class SignalProcessor
             var windowed = new Complex[fftSize];
             for (var i = 0; i < ac.Length; i++)
             {
-                var window = 0.5 * (1 - Math.Cos(2 * Math.PI * i / (ac.Length - 1)));
+                var window = HannWindow(i, ac.Length);
                 windowed[i] = new Complex(ac[i] * window, 0);
             }
 
@@ -183,7 +184,7 @@ public static class SignalProcessor
 
             for (var i = 0; i < half; i++)
             {
-                var magnitude = windowed[i].Magnitude / segmentLength;
+                var magnitude = windowed[i].Magnitude;
                 psd[i] += magnitude * magnitude;
             }
 
@@ -195,10 +196,12 @@ public static class SignalProcessor
             return Array.Empty<double>();
         }
 
-        var normalization = 2.0 / (sampleRate * segmentCount);
+        // One-sided PSD density (V²/Hz), aligned with scipy.signal.welch(..., scaling='density').
+        var scale = 1.0 / (sampleRate * windowSumSq * segmentCount);
         for (var i = 0; i < psd.Length; i++)
         {
-            psd[i] *= normalization;
+            var oneSided = i == 0 || i == psd.Length - 1 ? 1.0 : 2.0;
+            psd[i] *= scale * oneSided;
         }
 
         return psd;
@@ -229,6 +232,63 @@ public static class SignalProcessor
         }
 
         return Math.Sqrt(Math.Max(0, sum));
+    }
+
+    public static (double[] FrequenciesHz, double[] JitterFs) ComputeCumulativeIntegratedJitter(
+        double[] psd,
+        double sampleRate,
+        int fftSize,
+        double lowHz,
+        double highHz,
+        double kpdVPerRad,
+        double harmonicHz)
+    {
+        if (psd.Length == 0 || kpdVPerRad <= 0 || harmonicHz <= 0)
+        {
+            return (Array.Empty<double>(), Array.Empty<double>());
+        }
+
+        var binWidth = sampleRate / fftSize;
+        var frequencies = new double[psd.Length];
+        var jitterFs = new double[psd.Length];
+
+        for (var i = 0; i < psd.Length; i++)
+        {
+            frequencies[i] = i * binWidth;
+        }
+
+        var lowIndex = 0;
+        while (lowIndex < psd.Length && frequencies[lowIndex] < lowHz)
+        {
+            lowIndex++;
+        }
+
+        var highIndex = psd.Length - 1;
+        while (highIndex >= lowIndex && frequencies[highIndex] > highHz)
+        {
+            highIndex--;
+        }
+
+        if (highIndex < lowIndex)
+        {
+            return (Array.Empty<double>(), Array.Empty<double>());
+        }
+
+        double sum = 0;
+        for (var i = highIndex; i >= lowIndex; i--)
+        {
+            sum += psd[i] * binWidth;
+            jitterFs[i] = VoltageJitterToFemtoseconds(Math.Sqrt(Math.Max(0, sum)), kpdVPerRad, harmonicHz);
+        }
+
+        return (frequencies, jitterFs);
+    }
+
+    public static double VoltageJitterToFemtoseconds(double integratedVolts, double kpdVPerRad, double harmonicHz)
+    {
+        var integratedPhiRad = integratedVolts / kpdVPerRad;
+        var integratedTSec = integratedPhiRad / (2 * Math.PI * harmonicHz);
+        return integratedTSec * 1e15;
     }
 
     public static double[] BuildTimeAxis(int sampleCount, double sampleRate)
@@ -263,6 +323,70 @@ public static class SignalProcessor
         }
 
         return result;
+    }
+
+    public static (double[] TimeSeconds, float[] Values) DecimateForDisplayWithTime(
+        float[] samples,
+        int maxPoints,
+        double sampleRate)
+    {
+        if (samples.Length == 0)
+        {
+            return (Array.Empty<double>(), Array.Empty<float>());
+        }
+
+        if (sampleRate <= 0)
+        {
+            sampleRate = 1;
+        }
+
+        if (samples.Length <= maxPoints)
+        {
+            return (BuildTimeAxis(samples.Length, sampleRate), samples);
+        }
+
+        var time = new double[maxPoints];
+        var values = new float[maxPoints];
+        var lastIndex = samples.Length - 1;
+
+        for (var i = 0; i < maxPoints; i++)
+        {
+            var index = maxPoints == 1
+                ? 0
+                : (int)Math.Round(i * lastIndex / (double)(maxPoints - 1));
+            index = Math.Clamp(index, 0, lastIndex);
+            time[i] = index / sampleRate;
+            values[i] = samples[index];
+        }
+
+        return (time, values);
+    }
+
+    private static double HannWindow(int index, int length)
+    {
+        if (length < 2)
+        {
+            return 1.0;
+        }
+
+        return 0.5 * (1 - Math.Cos(2 * Math.PI * index / (length - 1)));
+    }
+
+    private static double HannWindowSumSquares(int length)
+    {
+        if (length < 2)
+        {
+            return 1.0;
+        }
+
+        double sum = 0;
+        for (var i = 0; i < length; i++)
+        {
+            var w = HannWindow(i, length);
+            sum += w * w;
+        }
+
+        return sum;
     }
 
     private static int NextPowerOfTwo(int value)

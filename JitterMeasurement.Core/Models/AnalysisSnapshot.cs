@@ -6,6 +6,8 @@ public sealed class AnalysisSnapshot
     public required double[] TimeVolts { get; init; }
     public required double[] FftFrequenciesHz { get; init; }
     public required double[] FftMagnitudeDb { get; init; }
+    public double[] CumulativeJitterFreqHz { get; init; } = Array.Empty<double>();
+    public double[] CumulativeJitterFs { get; init; } = Array.Empty<double>();
     public PhaseDetectorCal? Calibration { get; init; }
     public JitterResult? Jitter { get; init; }
     public double SampleRate { get; init; }

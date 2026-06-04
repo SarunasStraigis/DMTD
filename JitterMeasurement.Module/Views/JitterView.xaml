@@ -7,7 +7,7 @@
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>            
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
@@ -23,6 +23,8 @@
                     <ComboBox Width="320" Style="{StaticResource StyledComboBox}"
                               ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}"
                               DisplayMemberPath="Name"/>
+                    <Button Content="Refresh" Command="{Binding RefreshDevicesCommand}"
+                            Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" Padding="10,4"/>
                     <TextBlock Text="Sample rate:" Style="{StaticResource LabelTextBlock}" Margin="16,0,8,0"/>
                     <ComboBox Width="100" Style="{StaticResource StyledComboBox}"
                               ItemsSource="{Binding SampleRates}" SelectedItem="{Binding SelectedSampleRate}"/>
@@ -57,12 +59,18 @@
                     <TextBlock Text="Harmonic N:" Style="{StaticResource LabelTextBlock}" Margin="16,0,8,0"/>
                     <TextBox Width="60" Style="{StaticResource StyledTextBox}"
                              Text="{Binding HarmonicNumber, UpdateSourceTrigger=PropertyChanged}"/>
-                    <TextBlock Text="Integration (Hz):" Style="{StaticResource LabelTextBlock}" Margin="16,0,8,0"/>
+                    <TextBlock Text="Integration (Hz):" Style="{StaticResource LabelTextBlock}" Margin="16,0,8,0">
+                        <TextBlock.ToolTip>
+                            <TextBlock Text="{Binding IntegrationBandToolTip}" TextWrapping="Wrap" MaxWidth="320"/>
+                        </TextBlock.ToolTip>
+                    </TextBlock>
                     <TextBox Width="60" Style="{StaticResource StyledTextBox}"
-                             Text="{Binding IntegrationLowHz, UpdateSourceTrigger=PropertyChanged}"/>
+                             Text="{Binding IntegrationLowHz, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="{Binding IntegrationBandToolTip}"/>
                     <TextBlock Text="–" Style="{StaticResource LabelTextBlock}" Margin="4,0"/>
                     <TextBox Width="70" Style="{StaticResource StyledTextBox}"
-                             Text="{Binding IntegrationHighHz, UpdateSourceTrigger=PropertyChanged}"/>
+                             Text="{Binding IntegrationHighHz, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="{Binding IntegrationBandToolTip}"/>
                     <TextBlock Text="FFT view (kHz):" Style="{StaticResource LabelTextBlock}" Margin="16,0,8,0"/>
                     <TextBox Width="50" Style="{StaticResource StyledTextBox}"
                              Text="{Binding FftViewMaxKHz, UpdateSourceTrigger=PropertyChanged}"/>
@@ -86,8 +94,9 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
-                    <Button x:Name="TimeAutoscaleButton" Grid.Row="0" Style="{StaticResource SecondaryButton}"
-                            Content="Continuous auto: Off" Click="TimeAutoscaleButton_Click" HorizontalAlignment="Right"/>
+                    <Button x:Name="TimeAutoscaleButton" Grid.Row="0" Style="{StaticResource PlotOverlayToggleButton}"
+                            Content="Auto: Off" Click="TimeAutoscaleButton_Click"
+                            HorizontalAlignment="Right" Margin="0,0,0,8"/>
                     <ScottPlot:WpfPlot x:Name="TimePlot" Grid.Row="1"/>
                 </Grid>
             </Border>
@@ -97,8 +106,9 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
-                    <Button x:Name="FftAutoscaleButton" Grid.Row="0" Style="{StaticResource SecondaryButton}"
-                            Content="Continuous auto: Off" Click="FftAutoscaleButton_Click" HorizontalAlignment="Right"/>
+                    <Button x:Name="FftAutoscaleButton" Grid.Row="0" Style="{StaticResource PlotOverlayToggleButton}"
+                            Content="Auto: Off" Click="FftAutoscaleButton_Click"
+                            HorizontalAlignment="Right" Margin="0,0,0,8"/>
                     <ScottPlot:WpfPlot x:Name="FftPlot" Grid.Row="1"/>
                 </Grid>
             </Border>
@@ -107,10 +117,18 @@
         <Border Grid.Row="2" Grid.Column="1" Style="{StaticResource CardBorder}" Padding="20,24">
             <StackPanel VerticalAlignment="Center">
                 <TextBlock Text="{Binding PrimaryMetricTitle}" FontSize="13" FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,8"/>
+                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,8"
+                           ToolTip="{Binding IntegratedJitterToolTip}"/>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
                     <TextBlock Text="{Binding PrimaryMetricValue}" Style="{StaticResource MetricsHeroValue}"/>
                     <TextBlock Text="{Binding PrimaryMetricUnit}" Style="{StaticResource MetricsHeroUnit}"/>
+                </StackPanel>
+                <TextBlock Text="{Binding SecondaryMetricTitle}" FontSize="13" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,8"
+                           ToolTip="{Binding RmsJitterToolTip}"/>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
+                    <TextBlock Text="{Binding SecondaryMetricValue}" Style="{StaticResource MetricsSecondaryValue}"/>
+                    <TextBlock Text="{Binding SecondaryMetricUnit}" Style="{StaticResource MetricsSecondaryUnit}"/>
                 </StackPanel>
                 <TextBlock Text="{Binding DetailMetrics}" Style="{StaticResource MetricsDetail}"/>
                 <TextBlock Text="CLIP DETECTED" FontSize="14" FontWeight="Bold"

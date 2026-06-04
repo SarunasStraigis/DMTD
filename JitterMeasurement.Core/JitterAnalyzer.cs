@@ -34,6 +34,8 @@ public static class JitterAnalyzer
             return JitterResult.Invalid("Harmonic frequency must be positive.");
         }
 
+        var (bandLowHz, bandHighHz) = IntegrationBand.Clamp(integrationLowHz, integrationHighHz, sampleRate);
+
         var sigmaTSec = sigmaPhiRad / (2 * Math.PI * harmonicHz);
         var sigmaTDeg = sigmaPhiRad * (180.0 / Math.PI);
         var sigmaTFs = sigmaTSec * 1e15;
@@ -47,12 +49,21 @@ public static class JitterAnalyzer
             psd,
             sampleRate,
             fftSize,
-            integrationLowHz,
-            integrationHighHz);
+            bandLowHz,
+            bandHighHz);
 
         var integratedPhiRad = integratedV / calibration.KpdVPerRad;
         var integratedTSec = integratedPhiRad / (2 * Math.PI * harmonicHz);
         var integratedTFs = integratedTSec * 1e15;
+
+        var (cumulativeFreqHz, cumulativeJitterFs) = SignalProcessor.ComputeCumulativeIntegratedJitter(
+            psd,
+            sampleRate,
+            fftSize,
+            bandLowHz,
+            bandHighHz,
+            calibration.KpdVPerRad,
+            harmonicHz);
 
         var message = isClipping ? "Warning: input is clipping during measurement." : null;
 
@@ -64,6 +75,8 @@ public static class JitterAnalyzer
             SigmaTFs = sigmaTFs,
             IntegratedPhiRad = integratedPhiRad,
             IntegratedTFs = integratedTFs,
+            CumulativeJitterFreqHz = cumulativeFreqHz,
+            CumulativeJitterFs = cumulativeJitterFs,
             HarmonicFrequencyHz = harmonicHz,
             IsClipping = isClipping,
             IsValid = true,
