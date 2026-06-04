@@ -82,7 +82,7 @@ public sealed class DmtdCaptureService : IDisposable
             settings.SampleRate = SampleRate;
         }
 
-        InitializeProcessor(settings);
+        InitializeProcessorForCaptureStart(settings);
 
         if (requestedSampleRate != SampleRate)
         {
@@ -96,23 +96,40 @@ public sealed class DmtdCaptureService : IDisposable
         return new CaptureStartResult(requestedSampleRate, SampleRate);
     }
 
-    private void InitializeProcessor(DmtdSettings settings)
+    /// <summary>Apply configuration changes while capturing (e.g. after Save Configuration).</summary>
+    public void ApplySettings(DmtdSettings settings)
     {
-        var processorConfig = ProcessorConfig.From(settings);
-        if (_processor is null || _processorConfig != processorConfig)
-        {
-            _processor = new DmtdProcessor(settings);
-            if (settings.SavedUnwrapState?.Matches(settings) == true)
-            {
-                _processor.RestoreUnwrapState(settings.SavedUnwrapState);
-            }
-            else
-            {
-                _processor.Reset();
-            }
+        _settings = settings;
+        InitializeProcessor(settings, preserveLiveUnwrap: _processor is not null);
+    }
 
-            _processorConfig = processorConfig;
+    private void InitializeProcessorForCaptureStart(DmtdSettings settings) =>
+        InitializeProcessor(settings, preserveLiveUnwrap: false);
+
+    private void InitializeProcessor(DmtdSettings settings, bool preserveLiveUnwrap)
+    {
+        DspUnwrapState? liveUnwrap = null;
+        if (preserveLiveUnwrap && _processor is not null && _settings is not null)
+        {
+            liveUnwrap = _processor.ExportUnwrapState(_settings);
         }
+
+        _processor = new DmtdProcessor(settings);
+        if (liveUnwrap?.Matches(settings) == true)
+        {
+            _processor.RestorePhaseUnwrap(liveUnwrap);
+        }
+        else if (settings.SavedUnwrapState?.Matches(settings) == true)
+        {
+            _processor.RestorePhaseUnwrap(settings.SavedUnwrapState);
+        }
+        else
+        {
+            _processor.Reset();
+        }
+
+        _processor.ResetFrequencyTracking();
+        _processorConfig = ProcessorConfig.From(settings);
     }
 
     public void Stop()

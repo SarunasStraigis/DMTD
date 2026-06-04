@@ -101,6 +101,16 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
             _latestPoint = point;
             NoteHistoryRowLogged(point);
             LivePointReceived?.Invoke(point);
+
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher is not null)
+            {
+                dispatcher.BeginInvoke(UpdateMetricDisplay, DispatcherPriority.DataBind);
+            }
+            else
+            {
+                UpdateMetricDisplay();
+            }
         };
         _capture.ErrorOccurred += msg => StatusText = msg;
 
@@ -703,6 +713,11 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
     private void SaveConfig()
     {
         PersistSettings();
+        if (IsCapturing)
+        {
+            _capture.ApplySettings(_settings);
+        }
+
         StatusText = "Configuration saved.";
     }
 

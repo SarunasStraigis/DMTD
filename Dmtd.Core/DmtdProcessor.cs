@@ -53,12 +53,20 @@ public sealed class DmtdProcessor
 
     public void RestoreUnwrapState(DspUnwrapState state)
     {
+        RestorePhaseUnwrap(state);
+        _lastEstimatedFreq = state.LastEstimatedFreq;
+    }
+
+    /// <summary>Restores IQ unwrap continuity only; beat tracking re-acquires from the spectrum.</summary>
+    public void RestorePhaseUnwrap(DspUnwrapState state)
+    {
         _prevRawA = state.PrevRawA;
         _prevRawB = state.PrevRawB;
         _unwrapOffsetA = state.UnwrapOffsetA;
         _unwrapOffsetB = state.UnwrapOffsetB;
-        _lastEstimatedFreq = state.LastEstimatedFreq;
     }
+
+    public void ResetFrequencyTracking() => _lastEstimatedFreq = null;
 
     public BlockProcessResult ProcessBlock(ReadOnlySpan<float> chA, ReadOnlySpan<float> chB)
     {
