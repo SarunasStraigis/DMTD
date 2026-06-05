@@ -4,6 +4,15 @@ All notable changes to PhaseLab are documented here. Format follows [Keep a Chan
 
 ## [Unreleased]
 
+### Changed
+
+- **DMTD:** New **Logging** side tab with disk logging settings and CSV export (session, retention period, or custom date range).
+- **DMTD:** Configuration **Apply** button beside the section header; restarts capture when applied while capturing.
+
+### Fixed
+
+- **API:** DMTD action URLs use single-segment ids (`phase-zero-set`, `phase-zero-clear`, `session-reset`); slash ids such as `phase-zero/set` returned 404.
+
 ## [1.0.6] - 2026-06-04
 
 ### Fixed

@@ -93,16 +93,9 @@
                     <Border Style="{StaticResource CardBorder}" Padding="16,16">
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <StackPanel VerticalAlignment="Top">
-                                <UniformGrid Columns="2" Rows="2" Margin="0,0,0,12">
+                                <UniformGrid Columns="3" Margin="0,0,0,12">
                                     <Button Content="Reset" Command="{Binding ResetPhaseCommand}"
                                             Style="{StaticResource CompactSecondaryButton}"/>
-                                    <Button Content="Download CSV" Command="{Binding DownloadHistoryCommand}"
-                                            Style="{StaticResource CompactSecondaryButton}"
-                                            Visibility="{Binding ShowDownloadCsv, Converter={StaticResource BoolToVisibilityConverter}}">
-                                        <Button.ToolTip>
-                                            <TextBlock Text="{Binding DownloadCsvToolTip}" TextWrapping="Wrap" MaxWidth="280"/>
-                                        </Button.ToolTip>
-                                    </Button>
                                     <Button Content="Set Zero" Command="{Binding SetZeroCommand}"
                                             Style="{StaticResource CompactSecondaryButton}"/>
                                     <Button Content="Clear Zero" Command="{Binding ClearZeroCommand}"
@@ -186,7 +179,16 @@
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <Border Style="{StaticResource CardBorder}" Padding="16,16">
                             <StackPanel>
-                                <TextBlock Text="Analyser Configuration" Style="{StaticResource SectionHeaderText}"/>
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Analyser Configuration"
+                                               Style="{StaticResource SectionHeaderText}" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" Content="Apply" Command="{Binding ApplyConfigCommand}"
+                                            Style="{StaticResource PrimaryButton}" Padding="12,4" MinHeight="28"/>
+                                </Grid>
                                 <UniformGrid Columns="1" Margin="0,0,0,8">
                                     <StackPanel Margin="0,0,0,8">
                                         <TextBlock Text="Beat frequency (Hz)" Style="{StaticResource LabelTextBlock}"/>
@@ -239,19 +241,56 @@
                                         <TextBox Style="{StaticResource StyledTextBox}"
                                                  Text="{Binding IqMinMag, UpdateSourceTrigger=PropertyChanged}"/>
                                     </StackPanel>
-                                    <StackPanel Margin="0,0,0,8">
-                                        <TextBlock Text="History retention (days)" Style="{StaticResource LabelTextBlock}"/>
-                                        <TextBox Style="{StaticResource StyledTextBox}"
-                                                 Text="{Binding HistoryRetentionDays, UpdateSourceTrigger=PropertyChanged}"/>
-                                    </StackPanel>
-                                    <StackPanel Margin="0,0,0,8">
-                                        <CheckBox Content="Log phase history to disk"
-                                                  IsChecked="{Binding EnableHistoryLogging}"
-                                                  ToolTip="When enabled, each processed block is appended to history.db for CSV export."/>
-                                    </StackPanel>
                                 </UniformGrid>
-                                <Button Content="Save Configuration" Command="{Binding SaveConfigCommand}"
-                                        Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch"/>
+                            </StackPanel>
+                        </Border>
+                    </ScrollViewer>
+                </TabItem>
+
+                <TabItem Header="Logging">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <Border Style="{StaticResource CardBorder}" Padding="16,16">
+                            <StackPanel>
+                                <TextBlock Text="Logging settings" Style="{StaticResource SectionHeaderText}" Margin="0,0,0,12"/>
+                                <StackPanel Margin="0,0,0,8">
+                                    <CheckBox Content="Log phase history to disk"
+                                              IsChecked="{Binding EnableHistoryLogging}"
+                                              ToolTip="When enabled, each processed block is appended to history.db for CSV export."/>
+                                </StackPanel>
+                                <StackPanel Margin="0,0,0,16">
+                                    <TextBlock Text="History retention (days)" Style="{StaticResource LabelTextBlock}"/>
+                                    <TextBox Style="{StaticResource StyledTextBox}"
+                                             Text="{Binding HistoryRetentionDays, UpdateSourceTrigger=PropertyChanged}"/>
+                                    <TextBlock Text="Older rows are removed when capture starts."
+                                               FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/>
+                                </StackPanel>
+
+                                <TextBlock Text="Download log" Style="{StaticResource SectionHeaderText}" Margin="0,0,0,12"/>
+                                <StackPanel Margin="0,0,0,8">
+                                    <TextBlock Text="Export range" Style="{StaticResource LabelTextBlock}"/>
+                                    <ComboBox Style="{StaticResource StyledComboBox}"
+                                              ItemsSource="{Binding LogExportScopeOptions}"
+                                              SelectedItem="{Binding SelectedLogExportScope}"
+                                              DisplayMemberPath="Label"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding RetentionPeriodExportDescription}" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,8"
+                                           Visibility="{Binding ShowRetentionPeriodDescription, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                <StackPanel Margin="0,0,0,8"
+                                            Visibility="{Binding ShowCustomLogDateRange, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <TextBlock Text="From" Style="{StaticResource LabelTextBlock}"/>
+                                    <DatePicker SelectedDate="{Binding LogExportFromDate}" Margin="0,0,0,8"/>
+                                    <TextBlock Text="To" Style="{StaticResource LabelTextBlock}"/>
+                                    <DatePicker SelectedDate="{Binding LogExportToDate}"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding LogExportRowCountDisplay}" FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,12"/>
+                                <Button Content="Download CSV" Command="{Binding DownloadLogCommand}"
+                                        Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch">
+                                    <Button.ToolTip>
+                                        <TextBlock Text="{Binding DownloadCsvToolTip}" TextWrapping="Wrap" MaxWidth="280"/>
+                                    </Button.ToolTip>
+                                </Button>
                             </StackPanel>
                         </Border>
                     </ScrollViewer>

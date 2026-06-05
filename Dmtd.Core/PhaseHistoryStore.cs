@@ -49,16 +49,11 @@ public sealed class PhaseHistoryStore : IDisposable
         }
     }
 
-    public IReadOnlyList<HistoryRow> Query(int limit = 10_000, string? since = null)
+    public IReadOnlyList<HistoryRow> Query(HistoryQuery query, int limit = 10_000)
     {
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = "SELECT ts, phase_rad, phase_ps, beat_freq FROM phase_log";
-        if (!string.IsNullOrWhiteSpace(since))
-        {
-            cmd.CommandText += " WHERE ts >= $since";
-            cmd.Parameters.AddWithValue("$since", since);
-        }
-
+        AppendWhereClause(cmd, query);
         cmd.CommandText += " ORDER BY ts DESC LIMIT $limit";
         cmd.Parameters.AddWithValue("$limit", limit);
 
@@ -77,18 +72,18 @@ public sealed class PhaseHistoryStore : IDisposable
         return rows;
     }
 
-    public int Count(string? since = null)
+    public IReadOnlyList<HistoryRow> Query(int limit = 10_000, string? since = null) =>
+        Query(new HistoryQuery(since), limit);
+
+    public int Count(HistoryQuery query)
     {
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = "SELECT COUNT(*) FROM phase_log";
-        if (!string.IsNullOrWhiteSpace(since))
-        {
-            cmd.CommandText += " WHERE ts >= $since";
-            cmd.Parameters.AddWithValue("$since", since);
-        }
-
+        AppendWhereClause(cmd, query);
         return Convert.ToInt32(cmd.ExecuteScalar());
     }
+
+    public int Count(string? since = null) => Count(new HistoryQuery(since));
 
     public void PruneOldRows(int retentionDays)
     {
@@ -99,9 +94,9 @@ public sealed class PhaseHistoryStore : IDisposable
         cmd.ExecuteNonQuery();
     }
 
-    public string ExportCsv(string? since = null)
+    public string ExportCsv(HistoryQuery query)
     {
-        var rows = Query(limit: 1_000_000, since: since);
+        var rows = Query(query, limit: 1_000_000);
         using var writer = new StringWriter();
         writer.WriteLine("ts,phase_rad,phase_ps,beat_freq");
         foreach (var row in rows)
@@ -110,6 +105,29 @@ public sealed class PhaseHistoryStore : IDisposable
         }
 
         return writer.ToString();
+    }
+
+    public string ExportCsv(string? since = null) => ExportCsv(new HistoryQuery(since));
+
+    private static void AppendWhereClause(SqliteCommand cmd, HistoryQuery query)
+    {
+        var clauses = new List<string>();
+        if (!string.IsNullOrWhiteSpace(query.Since))
+        {
+            clauses.Add("ts >= $since");
+            cmd.Parameters.AddWithValue("$since", query.Since);
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Until))
+        {
+            clauses.Add("ts <= $until");
+            cmd.Parameters.AddWithValue("$until", query.Until);
+        }
+
+        if (clauses.Count > 0)
+        {
+            cmd.CommandText += " WHERE " + string.Join(" AND ", clauses);
+        }
     }
 
     private void WriterLoop()

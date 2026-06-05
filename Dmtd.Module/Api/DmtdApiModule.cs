@@ -10,9 +10,9 @@ public sealed class DmtdApiModule : IMeasurementApiModule
 {
     private static readonly string[] Actions =
     [
-        "phase-zero/set",
-        "phase-zero/clear",
-        "session/reset"
+        "phase-zero-set",
+        "phase-zero-clear",
+        "session-reset"
     ];
 
     private readonly DmtdViewModel _viewModel;
@@ -114,9 +114,9 @@ public sealed class DmtdApiModule : IMeasurementApiModule
 
     public ActionResultDto ExecuteAction(string actionId) => OnUi(() => actionId switch
     {
-        "phase-zero/set" => ExecuteSetZero(),
-        "phase-zero/clear" => ExecuteClearZero(),
-        "session/reset" => ExecuteResetSession(),
+        "phase-zero-set" => ExecuteSetZero(),
+        "phase-zero-clear" => ExecuteClearZero(),
+        "session-reset" => ExecuteResetSession(),
         _ => throw new ModuleApiException($"Unknown action '{actionId}'.", 404)
     });
 

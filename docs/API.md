@@ -2,6 +2,8 @@
 
 PhaseLab exposes a small **localhost-only REST API** while the desktop app is running. Use it to poll live metrics, control capture, and run module-specific actions from scripts or automation tools.
 
+**Python / automation:** see [DMTD_PYTHON_INTEGRATION.md](DMTD_PYTHON_INTEGRATION.md) for a copy-paste guide, delay conversion formulas, and a full example client.
+
 - **Base URL:** `http://127.0.0.1:8787`
 - **Interactive docs:** [http://127.0.0.1:8787/docs](http://127.0.0.1:8787/docs)
 - **OpenAPI spec:** [http://127.0.0.1:8787/openapi/v1.json](http://127.0.0.1:8787/openapi/v1.json)
@@ -56,7 +58,7 @@ curl -X POST http://127.0.0.1:8787/api/modules/dmtd/capture/stop
 Set phase zero (DMTD, while capturing):
 
 ```powershell
-curl -X POST http://127.0.0.1:8787/api/modules/dmtd/actions/phase-zero/set
+curl -X POST http://127.0.0.1:8787/api/modules/dmtd/actions/phase-zero-set
 ```
 
 Calibrate jitter (while capturing):
@@ -78,7 +80,7 @@ curl -X POST http://127.0.0.1:8787/api/modules/jitter/actions/calibrate
 | POST | `/api/modules/{id}/devices/refresh` | Re-enumerate devices |
 | POST | `/api/modules/{id}/capture/start` | Start capture |
 | POST | `/api/modules/{id}/capture/stop` | Stop capture |
-| POST | `/api/modules/{id}/actions/{action}` | Module-specific command |
+| POST | `/api/modules/{id}/actions/{action}` | Module-specific command (single path segment, e.g. `phase-zero-set`) |
 
 ### Capture start body (optional)
 
@@ -142,11 +144,22 @@ The `data` object is module-specific.
 
 ## Module actions
 
+Action ids are a **single** URL path segment after `/actions/` (use hyphens, not slashes).
+
+| Module | Action id | POST path |
+|--------|-----------|-----------|
+| dmtd | `phase-zero-set` | `/api/modules/dmtd/actions/phase-zero-set` |
+| dmtd | `phase-zero-clear` | `/api/modules/dmtd/actions/phase-zero-clear` |
+| dmtd | `session-reset` | `/api/modules/dmtd/actions/session-reset` |
+| jitter | `calibrate` | `/api/modules/jitter/actions/calibrate` |
+
+List available actions: `GET /api/modules/dmtd` → `actions` array.
+
 | Module | Action | Description |
 |--------|--------|-------------|
-| dmtd | `phase-zero/set` | Zero displayed phase to current reading |
-| dmtd | `phase-zero/clear` | Clear phase zero offset |
-| dmtd | `session/reset` | Reset session metrics and plot |
+| dmtd | `phase-zero-set` | Zero displayed phase to current reading |
+| dmtd | `phase-zero-clear` | Clear phase zero offset |
+| dmtd | `session-reset` | Reset session metrics and plot |
 | jitter | `calibrate` | Run phase-detector calibration |
 
 Failed preconditions return **409** with a JSON body: `{"detail": "..."}`.

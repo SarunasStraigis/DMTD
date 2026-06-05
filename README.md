@@ -33,6 +33,7 @@ Output: `dist/PhaseLab.exe`
 While the app is running, a localhost REST API is available for scripting:
 
 - Docs: [docs/API.md](docs/API.md)
+- **Python DMTD integration:** [docs/DMTD_PYTHON_INTEGRATION.md](docs/DMTD_PYTHON_INTEGRATION.md) (example client, phase → delay, agent prompt)
 - Swagger UI: http://127.0.0.1:8787/docs
 - Snapshot: `GET /api/modules/{dmtd|jitter}/snapshot`
 
