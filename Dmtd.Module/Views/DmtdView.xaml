@@ -88,7 +88,9 @@
                 </Border>
             </Grid>
 
-            <TabControl Grid.Column="1" Style="{StaticResource SidePanelTabControl}">
+            <TabControl Grid.Column="1" Style="{StaticResource SidePanelTabControl}"
+                        x:Name="SidePanelTabControl"
+                        SelectionChanged="SidePanelTabControl_SelectionChanged">
                 <TabItem Header="Session">
                     <Border Style="{StaticResource CardBorder}" Padding="16,16">
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -247,7 +249,7 @@
                     </ScrollViewer>
                 </TabItem>
 
-                <TabItem Header="Logging">
+                <TabItem x:Name="LoggingTab" Header="Logging">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <Border Style="{StaticResource CardBorder}" Padding="16,16">
                             <StackPanel>
@@ -264,6 +266,9 @@
                                     <TextBlock Text="Older rows are removed when capture starts."
                                                FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"/>
                                 </StackPanel>
+                                <TextBlock Text="{Binding HistoryDatabasePath}" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
+                                           Margin="0,0,0,16"/>
 
                                 <TextBlock Text="Download log" Style="{StaticResource SectionHeaderText}" Margin="0,0,0,12"/>
                                 <StackPanel Margin="0,0,0,8">
@@ -284,13 +289,20 @@
                                     <DatePicker SelectedDate="{Binding LogExportToDate}"/>
                                 </StackPanel>
                                 <TextBlock Text="{Binding LogExportRowCountDisplay}" FontSize="12"
-                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,12"/>
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4"/>
+                                <TextBlock Text="{Binding LogExportStatusText}" FontSize="11"
+                                           Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap"
+                                           Margin="0,0,0,12"
+                                           Visibility="{Binding ShowLogExportStatus, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                 <Button Content="Download CSV" Command="{Binding DownloadLogCommand}"
-                                        Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch">
+                                        Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch"
+                                        Margin="0,0,0,8">
                                     <Button.ToolTip>
                                         <TextBlock Text="{Binding DownloadCsvToolTip}" TextWrapping="Wrap" MaxWidth="280"/>
                                     </Button.ToolTip>
                                 </Button>
+                                <Button Content="Repair log database" Command="{Binding RepairHistoryCommand}"
+                                        Style="{StaticResource SecondaryButton}" HorizontalAlignment="Stretch"/>
                             </StackPanel>
                         </Border>
                     </ScrollViewer>

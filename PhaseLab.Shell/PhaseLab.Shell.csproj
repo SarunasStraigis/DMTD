@@ -9,7 +9,7 @@
     <AssemblyName>PhaseLab</AssemblyName>
     <RootNamespace>PhaseLab.Shell</RootNamespace>
     <ApplicationTitle>PhaseLab</ApplicationTitle>
-    <Version>1.0.6</Version>
+    <Version>1.0.9</Version>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <StartupObject>PhaseLab.Shell.Program</StartupObject>
   </PropertyGroup>

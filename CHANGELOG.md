@@ -4,6 +4,8 @@ All notable changes to PhaseLab are documented here. Format follows [Keep a Chan
 
 ## [Unreleased]
 
+## [1.0.9] - 2026-06-05
+
 ### Changed
 
 - **DMTD:** New **Logging** side tab with disk logging settings and CSV export (session, retention period, or custom date range).
@@ -11,7 +13,14 @@ All notable changes to PhaseLab are documented here. Format follows [Keep a Chan
 
 ### Fixed
 
+- **DMTD:** Log session now starts on Start, Apply restart, and Reset; export row count refreshes on a background thread with flush-before-read.
+- **DMTD:** Thread-safe phase history database, integrity check on export/repair, and **Repair log database** action in the Logging tab.
+- **DMTD:** Capture stop/start drains the block queue and waits for the DSP worker to exit (fixes intermittent NullReference on Apply/Start and UI freeze on Start).
 - **API:** DMTD action URLs use single-segment ids (`phase-zero-set`, `phase-zero-clear`, `session-reset`); slash ids such as `phase-zero/set` returned 404.
+
+### Added
+
+- **DMTD:** `PhaseHistoryStore` unit tests.
 
 ## [1.0.6] - 2026-06-04
 

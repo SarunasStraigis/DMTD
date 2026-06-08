@@ -1,6 +1,7 @@
 using Dmtd.Core;
 using Dmtd.Module.Api;
 using Dmtd.Module.Services;
+using Microsoft.Data.Sqlite;
 using PhaseLab.UI;
 using Microsoft.Win32;
 using System.Collections.ObjectModel;
@@ -9,6 +10,8 @@ using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -45,8 +48,9 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
     private string _channelPhaseAbDisplay = "—";
     private bool _showSlipWarning;
     private string _slipWarningText = string.Empty;
-    private DateTimeOffset? _sessionSince;
+    private DateTimeOffset? _logSessionSince;
     private int _logExportRowCount;
+    private string _logExportStatusText = string.Empty;
     private EnumOption<PhaseLogExportScope>? _selectedLogExportScope;
     private DateTime? _logExportFromDate = DateTime.Today.AddDays(-7);
     private DateTime? _logExportToDate = DateTime.Today;
@@ -56,6 +60,8 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
     private string _blockDurationMsText = string.Empty;
     private int _deviceMixSampleRateHz;
     private int? _actualCaptureSampleRateHz;
+    private bool _captureStartInProgress;
+    private int _logExportRefreshSerial;
 
     public DmtdViewModel()
     {
@@ -83,7 +89,7 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
         ];
         LogExportScopeOptions =
         [
-            new EnumOption<PhaseLogExportScope> { Label = "Current session (since Reset)", Value = PhaseLogExportScope.Session },
+            new EnumOption<PhaseLogExportScope> { Label = "Current session", Value = PhaseLogExportScope.Session },
             new EnumOption<PhaseLogExportScope> { Label = "Retention period", Value = PhaseLogExportScope.RetentionPeriod },
             new EnumOption<PhaseLogExportScope> { Label = "Custom date range", Value = PhaseLogExportScope.CustomRange }
         ];
@@ -99,9 +105,10 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
         ApplyConfigCommand = new RelayCommand(ApplyConfig);
         ResetPhaseCommand = new RelayCommand(ResetPhaseSession);
         DownloadLogCommand = new RelayCommand(DownloadLogCsv, () => CanDownloadLog);
+        RepairHistoryCommand = new RelayCommand(RepairHistoryDatabase);
         RefreshInputDevicesCommand = new RelayCommand(RefreshInputDevices);
 
-        RefreshLogExportRowCount();
+        RequestRefreshLogExportRowCount();
 
         _capture.LivePointAvailable += point =>
         {
@@ -469,9 +476,9 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
     public string DownloadCsvToolTip => SelectedLogExportScope?.Value switch
     {
         PhaseLogExportScope.Session =>
-            _sessionSince is null
-                ? "Export all logged rows (no Reset since app start)."
-                : "Export rows logged since the last Session Reset.",
+            _logSessionSince is null
+                ? "Export rows logged since the next Start, Apply, or Reset."
+                : "Export rows logged since the last Start, Apply, or Reset.",
         PhaseLogExportScope.RetentionPeriod =>
             $"Export rows from the last {HistoryRetentionDays} days (retention window).",
         PhaseLogExportScope.CustomRange =>
@@ -532,9 +539,27 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
     }
 
     public string LogExportRowCountDisplay =>
-        _logExportRowCount > 0
-            ? $"{_logExportRowCount:N0} rows available for export"
-            : "No rows match the selected export range";
+        SelectedLogExportScope?.Value == PhaseLogExportScope.Session && _logSessionSince is null
+            ? "Start capture to begin a log session"
+            : _logExportRowCount > 0
+                ? $"{_logExportRowCount:N0} rows available for export"
+                : "No rows match the selected export range";
+
+    public string LogExportStatusText
+    {
+        get => _logExportStatusText;
+        private set
+        {
+            if (SetField(ref _logExportStatusText, value))
+            {
+                OnPropertyChanged(nameof(ShowLogExportStatus));
+            }
+        }
+    }
+
+    public bool ShowLogExportStatus => !string.IsNullOrWhiteSpace(_logExportStatusText);
+
+    public string HistoryDatabasePath => AppDataPaths.DmtdHistoryFile;
 
     public bool CanDownloadLog => _logExportRowCount > 0;
 
@@ -591,7 +616,10 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
     public ICommand ApplyConfigCommand { get; }
     public ICommand ResetPhaseCommand { get; }
     public ICommand DownloadLogCommand { get; }
+    public ICommand RepairHistoryCommand { get; }
     public ICommand RefreshInputDevicesCommand { get; }
+
+    public void ActivateLoggingTab() => RequestRefreshLogExportRowCount();
 
     public void Activate()
     {
@@ -675,36 +703,65 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
 
     private void StartCapture()
     {
+        if (_captureStartInProgress)
+        {
+            return;
+        }
+
+        _captureStartInProgress = true;
+        StatusText = "Starting capture...";
+
+        PhaseHistoryStore? history = null;
         try
         {
-            PhaseHistoryStore? history = null;
             if (_settings.EnableHistoryLogging)
             {
                 EnsureHistoryStore();
-                _history!.PruneOldRows(_settings.HistoryRetentionDays);
                 history = _history;
             }
-
-            var result = _capture.Start(_settings, history);
-            _actualCaptureSampleRateHz = result.ActualSampleRateHz;
-            IsCapturing = true;
-            StatusText = SampleRateMismatchText.BuildCaptureStatus(true, result);
-            OnPropertyChanged(nameof(SelectedSampleRate));
-            OnPropertyChanged(nameof(BlockSizeDisplay));
-            NotifySampleRateWarningProperties();
-            if (result.HasMismatch)
-            {
-                PersistSettings();
-            }
-
-            StartMetricsTimer();
-            UpdateMetricDisplay();
-            RefreshLogExportRowCount();
         }
         catch (Exception ex)
         {
+            _captureStartInProgress = false;
             StatusText = ex.Message;
+            return;
         }
+
+        var retentionDays = _settings.HistoryRetentionDays;
+        Task.Run(() => history?.PruneOldRows(retentionDays))
+            .ContinueWith(_ =>
+            {
+                Application.Current?.Dispatcher.BeginInvoke(() =>
+                {
+                    try
+                    {
+                        var result = _capture.Start(_settings, history);
+                        _actualCaptureSampleRateHz = result.ActualSampleRateHz;
+                        IsCapturing = true;
+                        BeginLogSession();
+                        StatusText = SampleRateMismatchText.BuildCaptureStatus(true, result);
+                        OnPropertyChanged(nameof(SelectedSampleRate));
+                        OnPropertyChanged(nameof(BlockSizeDisplay));
+                        NotifySampleRateWarningProperties();
+                        if (result.HasMismatch)
+                        {
+                            PersistSettings();
+                        }
+
+                        StartMetricsTimer();
+                        UpdateMetricDisplay();
+                        RequestRefreshLogExportRowCount();
+                    }
+                    catch (Exception ex)
+                    {
+                        StatusText = ex.Message;
+                    }
+                    finally
+                    {
+                        _captureStartInProgress = false;
+                    }
+                }, DispatcherPriority.Normal);
+            }, TaskScheduler.Default);
     }
 
     private void StopCapture()
@@ -716,13 +773,44 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
         StatusText = string.Empty;
         NotifySampleRateWarningProperties();
         UpdateMetricDisplay();
-        RefreshLogExportRowCount();
+        RequestRefreshLogExportRowCount();
         PersistSettings();
+    }
+
+    private void BeginLogSession()
+    {
+        _logSessionSince = DateTimeOffset.UtcNow;
+        OnPropertyChanged(nameof(DownloadCsvToolTip));
+        RequestRefreshLogExportRowCount();
     }
 
     private void EnsureHistoryStore()
     {
-        _history ??= new PhaseHistoryStore(AppDataPaths.DmtdHistoryFile);
+        if (_history is not null)
+        {
+            return;
+        }
+
+        _history = new PhaseHistoryStore(AppDataPaths.DmtdHistoryFile);
+        WireHistoryStore(_history);
+    }
+
+    private void WireHistoryStore(PhaseHistoryStore store) =>
+        store.WriteFailed += OnHistoryWriteFailed;
+
+    private void UnwireHistoryStore(PhaseHistoryStore store) =>
+        store.WriteFailed -= OnHistoryWriteFailed;
+
+    private void OnHistoryWriteFailed(string message)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is not null && !dispatcher.CheckAccess())
+        {
+            dispatcher.BeginInvoke(() => OnHistoryWriteFailed(message), DispatcherPriority.DataBind);
+            return;
+        }
+
+        LogExportStatusText = $"Log write failed: {message}";
     }
 
     private void StartMetricsTimer()
@@ -809,12 +897,10 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
 
     private void ResetPhaseSession()
     {
-        _sessionSince = DateTimeOffset.UtcNow;
-        OnPropertyChanged(nameof(DownloadCsvToolTip));
+        BeginLogSession();
         _phasePsHistory.Clear();
         ShowSlipWarning = false;
         SlipWarningText = string.Empty;
-        RefreshLogExportRowCount();
         UpdateMetricDisplay();
         PhaseSessionReset?.Invoke();
     }
@@ -826,62 +912,111 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
-        if (_sessionSince is not null && point.Timestamp < _sessionSince)
+        if (_logSessionSince is not null && point.Timestamp < _logSessionSince)
         {
             return;
         }
 
-        RefreshLogExportRowCount();
+        RequestRefreshLogExportRowCount();
     }
 
-    private void RefreshLogExportRowCount()
+    private void RequestRefreshLogExportRowCount()
     {
-        PhaseHistoryStore? disposableStore = null;
-        try
-        {
-            var store = _history ?? (disposableStore = new PhaseHistoryStore(AppDataPaths.DmtdHistoryFile));
-            _logExportRowCount = store.Count(BuildLogExportQuery());
-        }
-        catch
-        {
-            _logExportRowCount = 0;
-        }
-        finally
-        {
-            disposableStore?.Dispose();
-        }
+        var serial = Interlocked.Increment(ref _logExportRefreshSerial);
+        var scope = SelectedLogExportScope?.Value;
+        var sessionSince = _logSessionSince;
+        var retentionDays = HistoryRetentionDays;
+        var fromDate = LogExportFromDate;
+        var toDate = LogExportToDate;
+        var historyRef = _history;
+        var historyPath = AppDataPaths.DmtdHistoryFile;
 
-        OnPropertyChanged(nameof(LogExportRowCountDisplay));
-        OnPropertyChanged(nameof(CanDownloadLog));
-        System.Windows.Input.CommandManager.InvalidateRequerySuggested();
+        Task.Run(() =>
+        {
+            if (scope == PhaseLogExportScope.Session && sessionSince is null)
+            {
+                ApplyLogExportRowCount(0, string.Empty, serial);
+                return;
+            }
+
+            PhaseHistoryStore? disposableStore = null;
+            try
+            {
+                var store = historyRef ?? (disposableStore = new PhaseHistoryStore(historyPath));
+                store.WaitForPendingWrites(TimeSpan.FromMilliseconds(250));
+                var query = BuildLogExportQuery(scope, sessionSince, retentionDays, fromDate, toDate);
+                var count = store.Count(query);
+                var status = string.IsNullOrEmpty(store.LastError) ? string.Empty : store.LastError!;
+                ApplyLogExportRowCount(count, status, serial);
+            }
+            catch (Exception ex)
+            {
+                ApplyLogExportRowCount(0, $"Could not read log database: {ex.Message}", serial);
+            }
+            finally
+            {
+                disposableStore?.Dispose();
+            }
+        });
     }
 
-    private HistoryQuery BuildLogExportQuery()
+    private void ApplyLogExportRowCount(int count, string statusText, int serial)
     {
-        return SelectedLogExportScope?.Value switch
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null)
         {
-            PhaseLogExportScope.Session => new HistoryQuery(_sessionSince?.ToString("O")),
-            PhaseLogExportScope.RetentionPeriod => new HistoryQuery(
-                DateTimeOffset.UtcNow.AddDays(-HistoryRetentionDays).ToString("O")),
-            PhaseLogExportScope.CustomRange => BuildCustomRangeQuery(),
+            return;
+        }
+
+        dispatcher.BeginInvoke(() =>
+        {
+            if (serial != _logExportRefreshSerial)
+            {
+                return;
+            }
+
+            _logExportRowCount = count;
+            LogExportStatusText = statusText;
+            OnPropertyChanged(nameof(LogExportRowCountDisplay));
+            OnPropertyChanged(nameof(CanDownloadLog));
+            System.Windows.Input.CommandManager.InvalidateRequerySuggested();
+        }, DispatcherPriority.Background);
+    }
+
+    private void RefreshLogExportRowCount() => RequestRefreshLogExportRowCount();
+
+    private static HistoryQuery BuildLogExportQuery(
+        PhaseLogExportScope? scope,
+        DateTimeOffset? sessionSince,
+        int retentionDays,
+        DateTime? fromDate,
+        DateTime? toDate)
+    {
+        return scope switch
+        {
+            PhaseLogExportScope.Session when sessionSince is not null =>
+                new HistoryQuery(sessionSince.Value.ToString("O")),
+            PhaseLogExportScope.RetentionPeriod =>
+                new HistoryQuery(DateTimeOffset.UtcNow.AddDays(-retentionDays).ToString("O")),
+            PhaseLogExportScope.CustomRange => BuildCustomRangeQuery(fromDate, toDate),
             _ => default
         };
     }
 
-    private HistoryQuery BuildCustomRangeQuery()
+    private static HistoryQuery BuildCustomRangeQuery(DateTime? fromDate, DateTime? toDate)
     {
-        if (LogExportFromDate is not DateTime fromDate || LogExportToDate is not DateTime toDate)
+        if (fromDate is not DateTime from || toDate is not DateTime to)
         {
             return default;
         }
 
-        if (toDate < fromDate)
+        if (to < from)
         {
-            (fromDate, toDate) = (toDate, fromDate);
+            (from, to) = (to, from);
         }
 
-        var localStart = DateTime.SpecifyKind(fromDate.Date, DateTimeKind.Local);
-        var localEnd = DateTime.SpecifyKind(toDate.Date.AddDays(1).AddTicks(-1), DateTimeKind.Local);
+        var localStart = DateTime.SpecifyKind(from.Date, DateTimeKind.Local);
+        var localEnd = DateTime.SpecifyKind(to.Date.AddDays(1).AddTicks(-1), DateTimeKind.Local);
         var since = new DateTimeOffset(localStart).ToUniversalTime().ToString("O");
         var until = new DateTimeOffset(localEnd).ToUniversalTime().ToString("O");
         return new HistoryQuery(since, until);
@@ -889,11 +1024,29 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
 
     private void DownloadLogCsv()
     {
+        if (SelectedLogExportScope?.Value == PhaseLogExportScope.Session && _logSessionSince is null)
+        {
+            StatusText = "Start capture to begin a log session.";
+            return;
+        }
+
         PhaseHistoryStore? disposableStore = null;
         try
         {
             var store = _history ?? (disposableStore = new PhaseHistoryStore(AppDataPaths.DmtdHistoryFile));
-            var query = BuildLogExportQuery();
+            store.WaitForPendingWrites(TimeSpan.FromSeconds(5));
+            if (!store.CheckIntegrity())
+            {
+                StatusText = $"CSV export failed: log database integrity check failed ({store.LastError}).";
+                return;
+            }
+
+            var query = BuildLogExportQuery(
+                SelectedLogExportScope?.Value,
+                _logSessionSince,
+                HistoryRetentionDays,
+                LogExportFromDate,
+                LogExportToDate);
             var csv = store.ExportCsv(query);
             var rowCount = csv.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length - 1;
 
@@ -913,7 +1066,7 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
             StatusText = rowCount > 0
                 ? $"Exported {rowCount:N0} rows to {dialog.FileName}"
                 : $"Saved empty CSV (no rows matched) to {dialog.FileName}";
-            RefreshLogExportRowCount();
+            RequestRefreshLogExportRowCount();
         }
         catch (Exception ex)
         {
@@ -922,6 +1075,46 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
         finally
         {
             disposableStore?.Dispose();
+        }
+    }
+
+    private void RepairHistoryDatabase()
+    {
+        var confirm = MessageBox.Show(
+            "This backs up readable rows to CSV, renames the current history.db, and creates a new empty database.\n\nContinue?",
+            "Repair log database",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            if (_history is not null)
+            {
+                UnwireHistoryStore(_history);
+                _history.Dispose();
+                _history = null;
+            }
+
+            SqliteConnection.ClearAllPools();
+            _history = PhaseHistoryStore.Repair(AppDataPaths.DmtdHistoryFile);
+            WireHistoryStore(_history);
+            if (IsCapturing)
+            {
+                _capture.SetHistoryStore(_history);
+            }
+
+            LogExportStatusText = "Log database repaired; previous file and CSV backup saved beside history.db.";
+            StatusText = "Log database repaired.";
+            RequestRefreshLogExportRowCount();
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Log database repair failed: {ex.Message}";
+            LogExportStatusText = StatusText;
         }
     }
 
@@ -1166,7 +1359,12 @@ public sealed class DmtdViewModel : INotifyPropertyChanged, IDisposable
     {
         Deactivate();
         StopMetricsTimer();
-        _history?.Dispose();
+        if (_history is not null)
+        {
+            UnwireHistoryStore(_history);
+            _history.Dispose();
+        }
+
         _capture.Dispose();
         PersistSettings();
     }

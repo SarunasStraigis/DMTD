@@ -9,12 +9,15 @@ namespace Dmtd.Module.Services;
 public sealed class DmtdCaptureService : IDisposable
 {
     public const int SnapshotFrames = 4096;
+    private static readonly TimeSpan WorkerShutdownTimeout = TimeSpan.FromMilliseconds(500);
 
     private readonly StereoRingBuffer _snapshot = new(SnapshotFrames);
     private readonly ConcurrentQueue<(float[] Left, float[] Right)> _blockQueue = new();
     private WasapiCapture? _capture;
     private CancellationTokenSource? _workerCts;
     private Task? _workerTask;
+    private TaskCompletionSource? _workerExited;
+    private volatile bool _shutdownFailed;
     private DmtdSettings? _settings;
     private PhaseHistoryStore? _history;
 
@@ -42,6 +45,12 @@ public sealed class DmtdCaptureService : IDisposable
 
     public CaptureStartResult Start(DmtdSettings settings, PhaseHistoryStore? history)
     {
+        if (_shutdownFailed)
+        {
+            throw new InvalidOperationException(
+                "Previous capture did not shut down cleanly. Restart PhaseLab before starting again.");
+        }
+
         StopCaptureStream();
 
         var requestedSampleRate = settings.SampleRate;
@@ -54,8 +63,11 @@ public sealed class DmtdCaptureService : IDisposable
         _blockRight.Clear();
 
         var device = WasapiCaptureFormat.ResolveDevice(settings.DeviceId);
+        var mixFormat = device.AudioClient?.MixFormat
+            ?? throw new InvalidOperationException("Audio device is unavailable or has no mix format.");
+
         _capture = new WasapiCapture(device) { ShareMode = AudioClientShareMode.Shared };
-        var channelCount = Math.Max(2, device.AudioClient.MixFormat.Channels);
+        var channelCount = Math.Max(2, mixFormat.Channels);
         _capture.WaveFormat = WaveFormat.CreateIeeeFloatWaveFormat(requestedSampleRate, channelCount);
         _capture.DataAvailable += OnDataAvailable;
         _capture.RecordingStopped += OnRecordingStopped;
@@ -66,10 +78,7 @@ public sealed class DmtdCaptureService : IDisposable
         }
         catch (Exception ex)
         {
-            _capture.DataAvailable -= OnDataAvailable;
-            _capture.RecordingStopped -= OnRecordingStopped;
-            _capture.Dispose();
-            _capture = null;
+            CleanupFailedStart();
             throw new InvalidOperationException(
                 $"Could not open device at {requestedSampleRate} Hz. " +
                 $"Set the sample rate in Focusrite Control / Windows Sound, then try again. ({ex.Message})",
@@ -91,6 +100,7 @@ public sealed class DmtdCaptureService : IDisposable
                 "DSP is using the actual capture rate.");
         }
 
+        _workerExited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _workerCts = new CancellationTokenSource();
         _workerTask = Task.Run(() => WorkerLoop(_workerCts.Token));
         return new CaptureStartResult(requestedSampleRate, SampleRate);
@@ -150,6 +160,15 @@ public sealed class DmtdCaptureService : IDisposable
 
     private void StopCaptureStream()
     {
+        StopAudioCapture();
+        DrainBlockQueue();
+        StopWorker();
+        _blockLeft.Clear();
+        _blockRight.Clear();
+    }
+
+    private void StopAudioCapture()
+    {
         if (_capture is null)
         {
             return;
@@ -160,25 +179,57 @@ public sealed class DmtdCaptureService : IDisposable
         _capture.StopRecording();
         _capture.Dispose();
         _capture = null;
+    }
 
+    private void StopWorker()
+    {
         _workerCts?.Cancel();
-        try
+
+        var worker = _workerTask;
+        var exited = _workerExited;
+        if (worker is not null && exited is not null)
         {
-            _workerTask?.Wait(TimeSpan.FromSeconds(2));
-        }
-        catch
-        {
-            // Ignore shutdown race.
+            try
+            {
+                if (!exited.Task.Wait(WorkerShutdownTimeout))
+                {
+                    _shutdownFailed = true;
+                }
+            }
+            catch (AggregateException)
+            {
+                // Worker cancelled.
+            }
         }
 
         _workerCts?.Dispose();
         _workerCts = null;
         _workerTask = null;
-        _blockLeft.Clear();
-        _blockRight.Clear();
+        _workerExited = null;
+    }
+
+    private void DrainBlockQueue()
+    {
         while (_blockQueue.TryDequeue(out _))
         {
         }
+    }
+
+    private void CleanupFailedStart()
+    {
+        if (_capture is not null)
+        {
+            _capture.DataAvailable -= OnDataAvailable;
+            _capture.RecordingStopped -= OnRecordingStopped;
+            _capture.Dispose();
+            _capture = null;
+        }
+
+        _processor = null;
+        _processorConfig = null;
+        DrainBlockQueue();
+        _blockLeft.Clear();
+        _blockRight.Clear();
     }
 
     public void SetPhaseZeroOffset(double offsetRad, double offsetPs)
@@ -202,22 +253,29 @@ public sealed class DmtdCaptureService : IDisposable
 
     private void WorkerLoop(CancellationToken token)
     {
-        while (!token.IsCancellationRequested)
+        try
         {
-            if (!_blockQueue.TryDequeue(out var block))
+            while (!token.IsCancellationRequested)
             {
-                Thread.Sleep(1);
-                continue;
-            }
+                if (!_blockQueue.TryDequeue(out var block))
+                {
+                    Thread.Sleep(1);
+                    continue;
+                }
 
-            try
-            {
-                ProcessBlock(block.Left, block.Right);
+                try
+                {
+                    ProcessBlock(block.Left, block.Right);
+                }
+                catch (Exception ex)
+                {
+                    ErrorOccurred?.Invoke(ex.Message);
+                }
             }
-            catch (Exception ex)
-            {
-                ErrorOccurred?.Invoke(ex.Message);
-            }
+        }
+        finally
+        {
+            _workerExited?.TrySetResult();
         }
     }
 

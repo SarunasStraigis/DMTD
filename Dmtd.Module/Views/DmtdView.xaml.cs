@@ -156,16 +156,22 @@ public partial class DmtdView : UserControl
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName != nameof(DmtdViewModel.MaWindow))
+        if (e.PropertyName == nameof(DmtdViewModel.MaWindow))
         {
-            return;
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+            {
+                RecomputeMa();
+                UpdatePhasePlot();
+            });
         }
+    }
 
-        Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+    private void SidePanelTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (SidePanelTabControl.SelectedItem == LoggingTab)
         {
-            RecomputeMa();
-            UpdatePhasePlot();
-        });
+            _viewModel.ActivateLoggingTab();
+        }
     }
 
     private void AppendMovingAverage()

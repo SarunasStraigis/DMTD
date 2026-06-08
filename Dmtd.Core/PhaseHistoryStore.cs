@@ -5,32 +5,30 @@ namespace Dmtd.Core;
 
 public sealed class PhaseHistoryStore : IDisposable
 {
-    private readonly SqliteConnection _connection;
+    private readonly string _dbPath;
+    private readonly object _dbLock = new();
     private readonly BlockingCollection<(string Ts, double PhaseRad, double PhasePs, double BeatFreq)> _queue = new(1024);
     private readonly Thread _writerThread;
+    private SqliteConnection _connection;
     private volatile bool _disposed;
+    private string? _lastError;
 
     public PhaseHistoryStore(string dbPath)
     {
+        _dbPath = dbPath;
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
-        _connection = new SqliteConnection($"Data Source={dbPath}");
-        _connection.Open();
-        using var cmd = _connection.CreateCommand();
-        cmd.CommandText = """
-            CREATE TABLE IF NOT EXISTS phase_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ts TEXT NOT NULL,
-                phase_rad REAL NOT NULL,
-                phase_ps REAL NOT NULL,
-                beat_freq REAL NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_ts ON phase_log (ts);
-            """;
-        cmd.ExecuteNonQuery();
+        _connection = OpenConnection(dbPath);
+        InitializeSchema(_connection);
 
         _writerThread = new Thread(WriterLoop) { IsBackground = true, Name = "PhaseHistoryWriter" };
         _writerThread.Start();
     }
+
+    public event Action<string>? WriteFailed;
+
+    public string? LastError => _lastError;
+
+    public string DatabasePath => _dbPath;
 
     public void Enqueue(string ts, double phaseRad, double phasePs, double beatFreq)
     {
@@ -49,27 +47,42 @@ public sealed class PhaseHistoryStore : IDisposable
         }
     }
 
-    public IReadOnlyList<HistoryRow> Query(HistoryQuery query, int limit = 10_000)
+    public void WaitForPendingWrites(TimeSpan timeout)
     {
-        using var cmd = _connection.CreateCommand();
-        cmd.CommandText = "SELECT ts, phase_rad, phase_ps, beat_freq FROM phase_log";
-        AppendWhereClause(cmd, query);
-        cmd.CommandText += " ORDER BY ts DESC LIMIT $limit";
-        cmd.Parameters.AddWithValue("$limit", limit);
-
-        var rows = new List<HistoryRow>();
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
+        var deadline = DateTime.UtcNow + timeout;
+        while (!_disposed && _queue.Count > 0 && DateTime.UtcNow < deadline)
         {
-            rows.Add(new HistoryRow(
-                reader.GetString(0),
-                reader.GetDouble(1),
-                reader.GetDouble(2),
-                reader.GetDouble(3)));
+            Thread.Sleep(10);
         }
 
-        rows.Reverse();
-        return rows;
+        // Allow writer thread to finish the current batch.
+        Thread.Sleep(50);
+    }
+
+    public IReadOnlyList<HistoryRow> Query(HistoryQuery query, int limit = 10_000)
+    {
+        lock (_dbLock)
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "SELECT ts, phase_rad, phase_ps, beat_freq FROM phase_log";
+            AppendWhereClause(cmd, query);
+            cmd.CommandText += " ORDER BY ts DESC LIMIT $limit";
+            cmd.Parameters.AddWithValue("$limit", limit);
+
+            var rows = new List<HistoryRow>();
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                rows.Add(new HistoryRow(
+                    reader.GetString(0),
+                    reader.GetDouble(1),
+                    reader.GetDouble(2),
+                    reader.GetDouble(3)));
+            }
+
+            rows.Reverse();
+            return rows;
+        }
     }
 
     public IReadOnlyList<HistoryRow> Query(int limit = 10_000, string? since = null) =>
@@ -77,10 +90,13 @@ public sealed class PhaseHistoryStore : IDisposable
 
     public int Count(HistoryQuery query)
     {
-        using var cmd = _connection.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(*) FROM phase_log";
-        AppendWhereClause(cmd, query);
-        return Convert.ToInt32(cmd.ExecuteScalar());
+        lock (_dbLock)
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM phase_log";
+            AppendWhereClause(cmd, query);
+            return Convert.ToInt32(cmd.ExecuteScalar());
+        }
     }
 
     public int Count(string? since = null) => Count(new HistoryQuery(since));
@@ -88,10 +104,13 @@ public sealed class PhaseHistoryStore : IDisposable
     public void PruneOldRows(int retentionDays)
     {
         var cutoff = DateTimeOffset.UtcNow.AddDays(-retentionDays).ToString("O");
-        using var cmd = _connection.CreateCommand();
-        cmd.CommandText = "DELETE FROM phase_log WHERE ts < $cutoff";
-        cmd.Parameters.AddWithValue("$cutoff", cutoff);
-        cmd.ExecuteNonQuery();
+        lock (_dbLock)
+        {
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "DELETE FROM phase_log WHERE ts < $cutoff";
+            cmd.Parameters.AddWithValue("$cutoff", cutoff);
+            cmd.ExecuteNonQuery();
+        }
     }
 
     public string ExportCsv(HistoryQuery query)
@@ -108,6 +127,101 @@ public sealed class PhaseHistoryStore : IDisposable
     }
 
     public string ExportCsv(string? since = null) => ExportCsv(new HistoryQuery(since));
+
+    public bool CheckIntegrity()
+    {
+        lock (_dbLock)
+        {
+            try
+            {
+                using var cmd = _connection.CreateCommand();
+                cmd.CommandText = "PRAGMA integrity_check";
+                var result = cmd.ExecuteScalar()?.ToString();
+                return string.Equals(result, "ok", StringComparison.OrdinalIgnoreCase);
+            }
+            catch (Exception ex)
+            {
+                _lastError = ex.Message;
+                return false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Backs up readable rows, renames the database file, and returns a new store on a fresh file.
+    /// </summary>
+    public static PhaseHistoryStore Repair(string dbPath)
+    {
+        var backupCsv = $"{dbPath}.bak.{DateTime.Now:yyyyMMdd-HHmmss}.csv";
+        try
+        {
+            if (File.Exists(dbPath))
+            {
+                using var readConn = new SqliteConnection($"Data Source={dbPath};Mode=ReadOnly");
+                readConn.Open();
+                using var cmd = readConn.CreateCommand();
+                cmd.CommandText = "SELECT ts, phase_rad, phase_ps, beat_freq FROM phase_log ORDER BY ts";
+                using var reader = cmd.ExecuteReader();
+                using var writer = new StreamWriter(backupCsv);
+                writer.WriteLine("ts,phase_rad,phase_ps,beat_freq");
+                while (reader.Read())
+                {
+                    writer.WriteLine($"{reader.GetString(0)},{reader.GetDouble(1)},{reader.GetDouble(2)},{reader.GetDouble(3)}");
+                }
+            }
+        }
+        catch
+        {
+            // Best-effort backup only.
+        }
+
+        if (File.Exists(dbPath))
+        {
+            var backupDb = $"{dbPath}.bak.{DateTime.Now:yyyyMMdd-HHmmss}";
+            SqliteConnection.ClearAllPools();
+            MoveDatabaseFiles(dbPath, backupDb);
+        }
+
+        return new PhaseHistoryStore(dbPath);
+    }
+
+    private static void MoveDatabaseFiles(string dbPath, string backupDbPath)
+    {
+        File.Move(dbPath, backupDbPath, overwrite: true);
+        foreach (var suffix in new[] { "-wal", "-shm" })
+        {
+            var sidecar = dbPath + suffix;
+            if (!File.Exists(sidecar))
+            {
+                continue;
+            }
+
+            File.Move(sidecar, backupDbPath + suffix, overwrite: true);
+        }
+    }
+
+    private static SqliteConnection OpenConnection(string dbPath)
+    {
+        var connection = new SqliteConnection($"Data Source={dbPath}");
+        connection.Open();
+        return connection;
+    }
+
+    private static void InitializeSchema(SqliteConnection connection)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            CREATE TABLE IF NOT EXISTS phase_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT NOT NULL,
+                phase_rad REAL NOT NULL,
+                phase_ps REAL NOT NULL,
+                beat_freq REAL NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_ts ON phase_log (ts);
+            """;
+        cmd.ExecuteNonQuery();
+    }
 
     private static void AppendWhereClause(SqliteCommand cmd, HistoryQuery query)
     {
@@ -147,29 +261,35 @@ public sealed class PhaseHistoryStore : IDisposable
                     batch.Add(extra);
                 }
 
-                using var tx = _connection.BeginTransaction();
-                using var cmd = _connection.CreateCommand();
-                cmd.Transaction = tx;
-                cmd.CommandText = "INSERT INTO phase_log (ts, phase_rad, phase_ps, beat_freq) VALUES ($ts, $rad, $ps, $bf)";
-                var pTs = cmd.Parameters.Add("$ts", SqliteType.Text);
-                var pRad = cmd.Parameters.Add("$rad", SqliteType.Real);
-                var pPs = cmd.Parameters.Add("$ps", SqliteType.Real);
-                var pBf = cmd.Parameters.Add("$bf", SqliteType.Real);
-
-                foreach (var (ts, phaseRad, phasePs, beatFreq) in batch)
+                lock (_dbLock)
                 {
-                    pTs.Value = ts;
-                    pRad.Value = phaseRad;
-                    pPs.Value = phasePs;
-                    pBf.Value = beatFreq;
-                    cmd.ExecuteNonQuery();
+                    using var tx = _connection.BeginTransaction();
+                    using var cmd = _connection.CreateCommand();
+                    cmd.Transaction = tx;
+                    cmd.CommandText = "INSERT INTO phase_log (ts, phase_rad, phase_ps, beat_freq) VALUES ($ts, $rad, $ps, $bf)";
+                    var pTs = cmd.Parameters.Add("$ts", SqliteType.Text);
+                    var pRad = cmd.Parameters.Add("$rad", SqliteType.Real);
+                    var pPs = cmd.Parameters.Add("$ps", SqliteType.Real);
+                    var pBf = cmd.Parameters.Add("$bf", SqliteType.Real);
+
+                    foreach (var (ts, phaseRad, phasePs, beatFreq) in batch)
+                    {
+                        pTs.Value = ts;
+                        pRad.Value = phaseRad;
+                        pPs.Value = phasePs;
+                        pBf.Value = beatFreq;
+                        cmd.ExecuteNonQuery();
+                    }
+
+                    tx.Commit();
                 }
 
-                tx.Commit();
+                _lastError = null;
             }
-            catch
+            catch (Exception ex)
             {
-                // Ignore transient write failures.
+                _lastError = ex.Message;
+                WriteFailed?.Invoke(ex.Message);
             }
         }
     }
@@ -183,8 +303,11 @@ public sealed class PhaseHistoryStore : IDisposable
 
         _disposed = true;
         _queue.CompleteAdding();
-        _writerThread.Join(TimeSpan.FromSeconds(2));
-        _connection.Dispose();
+        _writerThread.Join(TimeSpan.FromSeconds(5));
+        lock (_dbLock)
+        {
+            _connection.Dispose();
+        }
     }
 }
 
